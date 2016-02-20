@@ -1,5 +1,7 @@
 #!/bin/bash
 
+trap "pkill -SIGINT witness_node" SIGINT SIGTERM SIGHUP
+
 [ -e /data_dir/config.ini ] || cp /default_config.ini /data_dir/config.ini
 
 [ -e /data_dir/pre_exec ] && bash /data_dir/pre_exec

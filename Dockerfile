@@ -4,7 +4,7 @@
 FROM l3iggs/archlinux:latest
 MAINTAINER Nathan Hourt <nathan@followmyvote.com>
 
-RUN pacman -Syu --noconfirm gcc make autoconf automake cmake ninja boost libtool git
+RUN pacman -Syu --noconfirm gcc make autoconf automake cmake ninja boost libtool git clang
 
 ADD . /bitshares-2
 WORKDIR /bitshares-2
@@ -18,5 +18,7 @@ RUN chmod a+x /launch
 VOLUME /data_dir
 
 EXPOSE 8090 9090
+
+STOPSIGNAL SIGINT
 
 ENTRYPOINT ["/launch"]
