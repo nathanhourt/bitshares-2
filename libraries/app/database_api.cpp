@@ -31,6 +31,8 @@
 #include <fc/crypto/hex.hpp>
 
 #include <boost/range/iterator_range.hpp>
+#include <boost/rational.hpp>
+#include <boost/multiprecision/cpp_int.hpp>
 
 #include <cctype>
 
@@ -1020,56 +1022,42 @@ market_ticker database_api_impl::get_ticker( const string& base, const string& q
    result.lowest_ask = 0;
    result.highest_bid = 0;
 
-   auto price_to_real = [&]( const long a, int p ) { return double( a ) / pow( 10, p ); };
+   auto price_to_real = [&]( const share_type a, int p ) { return double( a.value ) / pow( 10, p ); };
 
    try {
       if( base_id > quote_id ) std::swap(base_id, quote_id);
 
-      const auto& bidx = _db.get_index_type<bucket_index>();
-      const auto& by_key_idx = bidx.indices().get<by_key>();
-      uint32_t bucket_size = 86400;
+      uint32_t day = 86400;
       auto now = fc::time_point_sec( fc::time_point::now() );
+      auto orders = get_order_book( base, quote, 1 );
+      auto trades = get_trade_history( base, quote, now, fc::time_point_sec( now.sec_since_epoch() - day ), 100 );
 
-      auto itr = by_key_idx.lower_bound( bucket_key( base_id, quote_id, bucket_size,
-            now - bucket_size ) );
+      result.latest = trades[0].price;
 
-      if( itr != by_key_idx.end() && itr->key.base == base_id && itr->key.quote == quote_id && itr->key.seconds == bucket_size )
+      for ( market_trade t: trades )
       {
-         auto trades = get_trade_history( base, quote, now, fc::time_point_sec( now.sec_since_epoch() - bucket_size ), 100 );
+         result.base_volume += t.value;
+         result.quote_volume += t.amount;
+      }
 
-         if (assets[0]->id == base_id)
-         {
-            result.percent_change = ( ( price_to_real( itr->close_quote.value, assets[1]->precision ) / price_to_real( itr->close_base.value, assets[0]->precision ) )
-                                    / ( price_to_real( itr->open_quote.value, assets[1]->precision ) / price_to_real( itr->open_base.value, assets[0]->precision ) ) - 1 ) * 100;
-            result.lowest_ask = (double) itr->low_quote.value / (double) itr->low_base.value;
-            result.highest_bid = (double) itr->high_quote.value / (double) itr->high_base.value;
-            result.latest = trades[0].price;
-         }
-         else
-         {
-            result.percent_change = ( ( price_to_real( itr->close_base.value, assets[1]->precision ) / price_to_real( itr->close_quote.value, assets[0]->precision ) )
-                                    / ( price_to_real( itr->open_base.value, assets[1]->precision ) / price_to_real( itr->open_quote.value, assets[0]->precision ) ) - 1) * 100;
-            result.lowest_ask = (double) itr->low_base.value / (double) itr->low_quote.value;
-            result.highest_bid = (double) itr->high_base.value / (double) itr->high_quote.value;
-            result.latest = trades[0].price;
-         }
+      while (trades.size() == 100)
+      {
+         trades = get_trade_history( base, quote, trades[99].date, fc::time_point_sec( now.sec_since_epoch() - day ), 100 );
 
          for ( market_trade t: trades )
          {
-            result.base_volume += t.amount;
-            result.quote_volume += t.value;
+            result.base_volume += t.value;
+            result.quote_volume += t.amount;
          }
+      }
 
-         while (trades.size() == 100)
-         {
-            for ( market_trade t: trades )
-            {
-               result.base_volume += t.amount;
-               result.quote_volume += t.value;
-            }
+      trades = get_trade_history( base, quote, trades.back().date, fc::time_point_sec(), 1 );
+      result.percent_change = trades.size() > 0 ? ( ( result.latest / trades.back().price ) - 1 ) * 100 : 0;
 
-            trades = get_trade_history( base, quote, trades[99].date, fc::time_point_sec( now.sec_since_epoch() - bucket_size ), 100 );
-         }
+      //if (assets[0]->id == base_id)
+      {
+         result.lowest_ask = orders.asks[0].price;
+         result.highest_bid = orders.bids[0].price;
       }
 
       return result;
@@ -1106,19 +1094,19 @@ market_volume database_api_impl::get_24_volume( const string& base, const string
 
       for ( market_trade t: trades )
       {
-         result.base_volume += t.amount;
-         result.quote_volume += t.value;
+         result.base_volume += t.value;
+         result.quote_volume += t.amount;
       }
 
       while (trades.size() == 100)
       {
+         trades = get_trade_history( base, quote, trades[99].date, fc::time_point_sec( now.sec_since_epoch() - bucket_size ), 100 );
+
          for ( market_trade t: trades )
          {
-            result.base_volume += t.amount;
-            result.quote_volume += t.value;
+            result.base_volume += t.value;
+            result.quote_volume += t.amount;
          }
-
-         trades = get_trade_history( base, quote, trades[99].date, fc::time_point_sec( now.sec_since_epoch() - bucket_size ), 100 );
       }
 
       return result;
@@ -1132,6 +1120,7 @@ order_book database_api::get_order_book( const string& base, const string& quote
 
 order_book database_api_impl::get_order_book( const string& base, const string& quote, unsigned limit )const
 {
+   using boost::multiprecision::uint128_t;
    FC_ASSERT( limit <= 50 );
 
    order_book result;
@@ -1151,21 +1140,28 @@ order_book database_api_impl::get_order_book( const string& base, const string& 
    auto price_to_real = [&]( const price& p )
    {
       if( p.base.asset_id == base_id )
-         return asset_to_real( p.quote, assets[1]->precision ) / asset_to_real( p.base, assets[0]->precision );
+         return asset_to_real( p.base, assets[0]->precision ) / asset_to_real( p.quote, assets[1]->precision );
       else
-         return asset_to_real( p.base, assets[1]->precision ) / asset_to_real( p.quote, assets[0]->precision );
+         return asset_to_real( p.quote, assets[0]->precision ) / asset_to_real( p.base, assets[1]->precision );
    };
 
-   for( const auto& o : orders ) {
+   for( const auto& o : orders )
+   {
       if( o.sell_price.base.asset_id == base_id )
       {
-         result.asks.push_back( std::make_pair( price_to_real(o.sell_price),
-                                                asset_to_real(o.sell_price.base, assets[0]->precision)) );
+         order ord;
+         ord.price = price_to_real( o.sell_price );
+         ord.quote = asset_to_real( share_type( ( uint128_t( o.for_sale.value ) * o.sell_price.quote.amount.value ) / o.sell_price.base.amount.value ), assets[1]->precision );
+         ord.base = asset_to_real( o.for_sale, assets[0]->precision );
+         result.bids.push_back( ord );
       }
       else
       {
-         result.bids.push_back( std::make_pair( price_to_real(o.sell_price),
-                                                asset_to_real(o.sell_price.quote, assets[0]->precision ) ) );
+         order ord;
+         ord.price = price_to_real( o.sell_price );
+         ord.quote = asset_to_real( o.for_sale, assets[1]->precision );
+         ord.base = asset_to_real( share_type( ( uint64_t( o.for_sale.value ) * o.sell_price.quote.amount.value ) / o.sell_price.base.amount.value ), assets[0]->precision );
+         result.asks.push_back( ord );
       }
    }
 
@@ -1203,7 +1199,7 @@ vector<market_trade> database_api_impl::get_trade_history( const string& base,
    hkey.quote = quote_id;
    hkey.sequence = std::numeric_limits<int64_t>::min();
 
-   auto price_to_real = [&]( const long long a, int p ) { return double( a ) / pow( 10, p ); };
+   auto price_to_real = [&]( const share_type a, int p ) { return double( a.value ) / pow( 10, p ); };
 
    if ( start.sec_since_epoch() == 0 )
       start = fc::time_point_sec( fc::time_point::now() );
@@ -1218,15 +1214,15 @@ vector<market_trade> database_api_impl::get_trade_history( const string& base,
       {
          market_trade trade;
 
-         if( base_id == itr->op.receives.asset_id )
+         if( assets[0]->id == itr->op.receives.asset_id )
          {
-            trade.amount = price_to_real( itr->op.receives.amount.value, assets[0]->precision );
-            trade.value = price_to_real( itr->op.pays.amount.value, assets[1]->precision );
+            trade.amount = price_to_real( itr->op.pays.amount, assets[1]->precision );
+            trade.value = price_to_real( itr->op.receives.amount, assets[0]->precision );
          }
          else
          {
-            trade.amount = price_to_real( itr->op.pays.amount.value, assets[0]->precision );
-            trade.value = price_to_real( itr->op.receives.amount.value, assets[1]->precision );
+            trade.amount = price_to_real( itr->op.receives.amount, assets[1]->precision );
+            trade.value = price_to_real( itr->op.pays.amount, assets[0]->precision );
          }
 
          trade.date = itr->time;

@@ -154,19 +154,20 @@ namespace detail {
             vector<string> seeds = {
                "faucet.bitshares.org:1776",
                "bitshares.openledger.info:1776",
-               "114.92.254.159:62015",
+               "114.92.236.175:62015", // abit
                "seed.blocktrades.us:1776",
                "seed04.bitsharesnodes.com:1776", // thom
                "seed05.bitsharesnodes.com:1776", // thom
                "seed06.bitsharesnodes.com:1776", // thom
                "seed07.bitsharesnodes.com:1776", // thom
-               "128.199.131.4:1777", // cube 
+               "seed.cubeconnex.com:1777", // cube 
                "54.85.252.77:39705", // lafona
                "104.236.144.84:1777", // puppies
                "40.127.190.171:1777", // betax
                "185.25.22.21:1776", // liondani (greece)
                "23.95.43.126:50696", // iHashFury
-               "109.73.172.144:50696" // iHashFury
+               "109.73.172.144:50696", // iHashFury
+               "128.199.143.47:2015" // Harvey
             };
             for( const string& endpoint_string : seeds )
             {
@@ -224,7 +225,9 @@ namespace detail {
          if( !_options->count("rpc-endpoint") )
             return;
 
-         _websocket_server = std::make_shared<fc::http::websocket_server>();
+         bool enable_deflate_compression = _options->count("enable-permessage-deflate") != 0;
+
+         _websocket_server = std::make_shared<fc::http::websocket_server>(enable_deflate_compression);
 
          _websocket_server->on_connection([&]( const fc::http::websocket_connection_ptr& c ){
             auto wsc = std::make_shared<fc::rpc::websocket_api_connection>(*c);
@@ -251,7 +254,8 @@ namespace detail {
          }
 
          string password = _options->count("server-pem-password") ? _options->at("server-pem-password").as<string>() : "";
-         _websocket_tls_server = std::make_shared<fc::http::websocket_tls_server>( _options->at("server-pem").as<string>(), password );
+         bool enable_deflate_compression = _options->count("enable-permessage-deflate") != 0;
+         _websocket_tls_server = std::make_shared<fc::http::websocket_tls_server>( _options->at("server-pem").as<string>(), password, enable_deflate_compression );
 
          _websocket_tls_server->on_connection([&]( const fc::http::websocket_connection_ptr& c ){
             auto wsc = std::make_shared<fc::rpc::websocket_api_connection>(*c);
@@ -945,6 +949,8 @@ void application::set_program_options(boost::program_options::options_descriptio
          ("checkpoint,c", bpo::value<vector<string>>()->composing(), "Pairs of [BLOCK_NUM,BLOCK_ID] that should be enforced as checkpoints.")
          ("rpc-endpoint", bpo::value<string>()->implicit_value("127.0.0.1:8090"), "Endpoint for websocket RPC to listen on")
          ("rpc-tls-endpoint", bpo::value<string>()->implicit_value("127.0.0.1:8089"), "Endpoint for TLS websocket RPC to listen on")
+         ("enable-permessage-deflate", "Enable support for per-message deflate compression in the websocket servers "
+                                       "(--rpc-endpoint and --rpc-tls-endpoint), disabled by default")
          ("server-pem,p", bpo::value<string>()->implicit_value("server.pem"), "The TLS certificate file for this server")
          ("server-pem-password,P", bpo::value<string>()->implicit_value(""), "Password for this certificate")
          ("genesis-json", bpo::value<boost::filesystem::path>(), "File to read Genesis State from")
