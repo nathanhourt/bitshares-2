@@ -3,6 +3,7 @@
 #include <fc/thread/thread.hpp>
 #include <fc/log/logger.hpp>
 #include <fc/network/tcp_socket.hpp>
+#include <fc/signals.hpp>
 #include <graphene/chain/config.hpp>
 #include <graphene/chain/protocol/types.hpp>
 #include <graphene/net/node.hpp>
@@ -337,6 +338,8 @@ class node_impl : public peer_connection_delegate
 
       std::list<fc::future<void> > _handle_message_calls_in_progress;
 
+      fc::signal<void(network_statistics_event)> _on_statistics_event;
+
       node_impl(const std::string& user_agent);
       virtual ~node_impl();
 
@@ -382,6 +385,7 @@ class node_impl : public peer_connection_delegate
 
       void on_message( peer_connection* originating_peer,
                        const message& received_message ) override;
+      void on_message_sent(fc::optional<fc::ip::endpoint> remote_endpoint, const message& sent_message) override;
 
       void on_hello_message( peer_connection* originating_peer,
                              const hello_message& hello_message_received );

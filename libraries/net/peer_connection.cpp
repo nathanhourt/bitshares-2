@@ -302,6 +302,7 @@ namespace graphene { namespace net
           //     "to send message of type ${type} for peer ${endpoint}",
           //     ("type", message_to_send.msg_type)("endpoint", get_remote_endpoint()));
           _message_connection.send_message(message_to_send);
+          _node->on_message_sent(get_remote_endpoint(), message_to_send);
           //dlog("peer_connection::send_queued_messages_task()'s call to message_oriented_connection::send_message() completed normally for peer ${endpoint}",
           //     ("endpoint", get_remote_endpoint()));
         }

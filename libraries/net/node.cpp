@@ -1253,6 +1253,9 @@ namespace graphene { namespace net { namespace detail {
     void node_impl::on_message( peer_connection* originating_peer, const message& received_message )
     {
       VERIFY_CORRECT_THREAD();
+      _on_statistics_event(network_statistics_event(network_statistics_event::MessageReceived,
+                                                    originating_peer->get_remote_endpoint(),
+                                                    received_message.data));
       message_hash_type message_hash = received_message.id();
       dlog("handling message ${type} ${hash} size ${size} from peer ${endpoint}",
            ("type", graphene::net::core_message_type_enum(received_message.msg_type))("hash", message_hash)
@@ -1323,6 +1326,11 @@ namespace graphene { namespace net { namespace detail {
           process_ordinary_message(originating_peer, received_message, message_hash);
         break;
       }
+    }
+
+    void node_impl::on_message_sent(fc::optional<fc::ip::endpoint> remote_endpoint, const message &sent_message)
+    {
+        _on_statistics_event(network_statistics_event(network_statistics_event::MessageSent, remote_endpoint, sent_message.data));
     }
 
 

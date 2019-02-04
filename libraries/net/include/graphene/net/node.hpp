@@ -30,6 +30,7 @@
 #include <graphene/chain/protocol/types.hpp>
 
 #include <list>
+#include <vector>
 
 namespace graphene { namespace net {
 
@@ -52,6 +53,22 @@ namespace graphene { namespace net {
     fc::time_point received_time;
     fc::time_point validated_time;
     node_id_t originating_peer;
+  };
+
+  /// A struct for network statistics generation, used to record what messages are sent and received when
+  struct network_statistics_event {
+    enum EventType {
+        MessageSent,
+        MessageReceived
+    };
+
+    EventType event_type;
+    fc::optional<fc::ip::endpoint> remote_endpoint;
+    const std::vector<char>& event_data;
+    fc::time_point event_time;
+
+    network_statistics_event(EventType event_type, fc::optional<fc::ip::endpoint> remote_endpoint, const std::vector<char>& event_data)
+        : event_type(event_type), remote_endpoint(remote_endpoint), event_data(event_data), event_time(fc::time_point::now()) {}
   };
 
    /**
@@ -292,6 +309,7 @@ namespace graphene { namespace net {
 
         void disable_peer_advertising();
         fc::variant_object get_call_statistics() const;
+
       private:
         std::unique_ptr<detail::node_impl, detail::node_impl_deleter> my;
    };
