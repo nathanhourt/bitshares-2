@@ -4794,6 +4794,10 @@ namespace graphene { namespace net { namespace detail {
     INVOKE_IN_IMPL(get_call_statistics);
   }
 
+  boost::signals2::connection node::subscribe_network_stats(std::function<void (const network_statistics_event &)>&& c) {
+    return my->_on_statistics_event.connect(std::move(c));
+  }
+
   fc::variant_object node::network_get_info() const
   {
     INVOKE_IN_IMPL(network_get_info);

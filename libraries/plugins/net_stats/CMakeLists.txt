@@ -20,4 +20,5 @@ install( TARGETS
    LIBRARY DESTINATION lib
    ARCHIVE DESTINATION lib
 )
+set_property(TARGET graphene_net_stats PROPERTY CXX_STANDARD 14)
 INSTALL( FILES ${HEADERS} DESTINATION "include/graphene/net_stats" )

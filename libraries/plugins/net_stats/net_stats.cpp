@@ -34,24 +34,14 @@ public:
         : _self(_plugin) {}
     ~net_stats_impl() = default;
 
-    void onBlock(const signed_block& b);
-
-    graphene::chain::database& database()
-    {
-        return _self.database();
-    }
-
     net_stats_plugin& _self;
 
-    std::string _plugin_option = "";
+    void process_event(const net::network_statistics_event& event) {
+        ilog("Network statistic event: type=${type}, size=${size}, peer=${peer}", ("type", event.event_type)("size", event.event_data.size())("peer", event.remote_endpoint));
+    }
 
 private:
 };
-
-void net_stats_impl::onBlock(const signed_block& b) {
-    wdump((b.block_num()));
-}
-
 } // end namespace detail
 
 net_stats_plugin::net_stats_plugin() :
@@ -65,29 +55,27 @@ std::string net_stats_plugin::plugin_name()const {
 }
 
 std::string net_stats_plugin::plugin_description()const {
-    return "net_stats description";
+    return "Plugin to receive and process statistics events from P2P network";
 }
 
 void net_stats_plugin::plugin_set_program_options(boost::program_options::options_description& cli,
                                                   boost::program_options::options_description& cfg) {
-    cli.add_options()
-            ("net_stats_option", boost::program_options::value<std::string>(), "net_stats option")
-            ;
-    cfg.add(cli);
-}
-
-void net_stats_plugin::plugin_initialize(const boost::program_options::variables_map& options) {
-    database().applied_block.connect([&](const signed_block& b) {
-        my->onBlock(b);
-    });
-
-    if (options.count("net_stats")) {
-        my->_plugin_option = options["net_stats"].as<std::string>();
-    }
+//    cli.add_options()
+//            ("net_stats_option", boost::program_options::value<std::string>(), "net_stats option")
+//            ;
+//    cfg.add(cli);
 }
 
 void net_stats_plugin::plugin_startup() {
     ilog("net_stats: plugin_startup() begin");
+    FC_ASSERT(&p2p_node() != nullptr, "P2P node not yet set! Unable to initialize");
+    p2p_node().subscribe_network_stats([this](const net::network_statistics_event& event) {
+        // Copy event and schedule processing for later; return immediatly to unblock network
+        fc::async([event, data=event.event_data, this]() {
+            net::network_statistics_event copy(event.event_type, event.remote_endpoint, data, event.event_time);
+            my->process_event(copy);
+        });
+    });
 }
 
 } }
