@@ -33,6 +33,7 @@
 #include <graphene/snapshot/snapshot.hpp>
 #include <graphene/es_objects/es_objects.hpp>
 #include <graphene/grouped_orders/grouped_orders_plugin.hpp>
+#include <graphene/net_stats/net_stats.hpp>
 
 #include <fc/thread/thread.hpp>
 #include <fc/interprocess/signals.hpp>
@@ -82,6 +83,7 @@ int main(int argc, char** argv) {
       auto snapshot_plug = node->register_plugin<snapshot_plugin::snapshot_plugin>();
       auto es_objects_plug = node->register_plugin<es_objects::es_objects_plugin>();
       auto grouped_orders_plug = node->register_plugin<grouped_orders::grouped_orders_plugin>();
+      auto net_stats_plug = node->register_plugin<net_stats::net_stats_plugin>();
 
       try
       {
