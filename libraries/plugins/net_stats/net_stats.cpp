@@ -70,7 +70,7 @@ void net_stats_plugin::plugin_startup() {
     ilog("net_stats: plugin_startup() begin");
     FC_ASSERT(&p2p_node() != nullptr, "P2P node not yet set! Unable to initialize");
     p2p_node().subscribe_network_stats([this](const net::network_statistics_event& event) {
-        // Copy event and schedule processing for later; return immediatly to unblock network
+        // Copy event and schedule processing for later; return immediately to unblock network
         fc::async([event, data=event.event_data, this]() {
             net::network_statistics_event copy(event.event_type, event.remote_endpoint, data, event.event_time);
             my->process_event(copy);
