@@ -23,6 +23,7 @@
  */
 #include <graphene/chain/database.hpp>
 #include <graphene/chain/proposal_object.hpp>
+#include <graphene/chain/hardfork.hpp>
 
 namespace graphene { namespace chain {
 
@@ -30,15 +31,25 @@ bool proposal_object::is_authorized_to_execute(database& db) const
 {
    transaction_evaluation_state dry_run_eval(&db);
 
+   // See bitshares-core issue #210 for discussion
+   // The custom_operation::get_required_active_authorities() method initially failed to report the authorities
+   // from the custom_operaton::required_auths field. This was a bug. It's a simple fix in that method, but the
+   // fix is a hardfork, and thus we need a hardfork guard. Since that method cannot access chain time, we must
+   // implement the guard here, and skip the call to get_required_active_authorities() prior to the hardfork.
+   // Therefore, if the head_block_time() is prior to the 210 hardfork, we ignore the required auths specified
+   // by the custom_operation.
+   bool ignore_custom_operation_required_auths = (db.head_block_time() <= HARDFORK_CORE_210_TIME);
+
    try {
-      verify_authority( proposed_transaction.operations, 
-                        available_key_approvals,
-                        [&]( account_id_type id ){ return &id(db).active; },
-                        [&]( account_id_type id ){ return &id(db).owner;  },
-                        db.get_global_properties().parameters.max_authority_depth,
-                        true, /* allow committeee */
-                        available_active_approvals,
-                        available_owner_approvals );
+      verify_authority(proposed_transaction.operations,
+                       available_key_approvals,
+                       [&]( account_id_type id ){ return &id(db).active; },
+                       [&]( account_id_type id ){ return &id(db).owner;  },
+                       ignore_custom_operation_required_auths,
+                       db.get_global_properties().parameters.max_authority_depth,
+                       true, /* allow committeee */
+                       available_active_approvals,
+                       available_owner_approvals);
    } 
    catch ( const fc::exception& e )
    {

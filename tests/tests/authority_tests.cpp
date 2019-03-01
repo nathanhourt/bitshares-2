@@ -1438,10 +1438,41 @@ BOOST_FIXTURE_TEST_CASE( parent_owner_test, database_fixture )
    }
 }
 
-BOOST_AUTO_TEST_CASE( custom_operation_required_auths ) {
+BOOST_AUTO_TEST_CASE( custom_operation_required_auths_before_fork ) {
    try {
       ACTORS((alice)(bob));
       fund(alice);
+      enable_fees();
+
+      if (db.head_block_time() >= HARDFORK_CORE_210_TIME) {
+          wlog("Unable to test custom_operation required auths before fork: hardfork already passed");
+          return;
+      }
+
+      signed_transaction trx;
+      custom_operation op;
+      op.payer = alice_id;
+      op.required_auths.insert(bob_id);
+      op.fee = op.calculate_fee(db.current_fee_schedule().get<custom_operation>());
+      trx.operations.emplace_back(op);
+      trx.set_expiration(db.head_block_time() + 30);
+      sign(trx, alice_private_key);
+      // Op requires bob's authorization, but only alice signed. We're before the fork, so this should work anyways.
+      db.push_transaction(trx);
+   } catch (fc::exception& e) {
+      edump((e.to_detail_string()));
+      throw;
+   }
+}
+
+BOOST_AUTO_TEST_CASE( custom_operation_required_auths_after_fork ) {
+   try {
+      ACTORS((alice)(bob));
+      fund(alice);
+
+      if (db.head_block_time() < HARDFORK_CORE_210_TIME)
+         generate_blocks(HARDFORK_CORE_210_TIME + 10);
+
       enable_fees();
 
       signed_transaction trx;
@@ -1452,8 +1483,10 @@ BOOST_AUTO_TEST_CASE( custom_operation_required_auths ) {
       trx.operations.emplace_back(op);
       trx.set_expiration(db.head_block_time() + 30);
       sign(trx, alice_private_key);
+      // Op require's bob's authorization, but only alice signed. This should throw.
       GRAPHENE_REQUIRE_THROW(db.push_transaction(trx), tx_missing_active_auth);
       sign(trx, bob_private_key);
+      // Now that bob has signed, it should work.
       PUSH_TX(db, trx);
    } catch (fc::exception& e) {
       edump((e.to_detail_string()));

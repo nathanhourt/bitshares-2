@@ -149,11 +149,11 @@ namespace graphene { namespace chain {
          uint32_t max_recursion = GRAPHENE_MAX_SIG_CHECK_DEPTH
          )const;
 
-      void verify_authority(
-         const chain_id_type& chain_id,
-         const std::function<const authority*(account_id_type)>& get_active,
-         const std::function<const authority*(account_id_type)>& get_owner,
-         uint32_t max_recursion = GRAPHENE_MAX_SIG_CHECK_DEPTH )const;
+      void verify_authority(const chain_id_type& chain_id,
+                            const std::function<const authority*(account_id_type)>& get_active,
+                            const std::function<const authority*(account_id_type)>& get_owner,
+                            bool ignore_custom_operation_required_auths = false,
+                            uint32_t max_recursion = GRAPHENE_MAX_SIG_CHECK_DEPTH)const;
 
       /**
        * This is a slower replacement for get_required_signatures()
@@ -213,13 +213,14 @@ namespace graphene { namespace chain {
       mutable bool _validated = false;
    };
 
-   void verify_authority( const vector<operation>& ops, const flat_set<public_key_type>& sigs,
-                          const std::function<const authority*(account_id_type)>& get_active,
-                          const std::function<const authority*(account_id_type)>& get_owner,
-                          uint32_t max_recursion = GRAPHENE_MAX_SIG_CHECK_DEPTH,
-                          bool allow_committe = false,
-                          const flat_set<account_id_type>& active_aprovals = flat_set<account_id_type>(),
-                          const flat_set<account_id_type>& owner_approvals = flat_set<account_id_type>());
+   void verify_authority(const vector<operation>& ops, const flat_set<public_key_type>& sigs,
+                         const std::function<const authority*(account_id_type)>& get_active,
+                         const std::function<const authority*(account_id_type)>& get_owner,
+                         bool ignore_custom_operation_required_auths = false, ///< Ref issue #210
+                         uint32_t max_recursion = GRAPHENE_MAX_SIG_CHECK_DEPTH,
+                         bool allow_committe = false,
+                         const flat_set<account_id_type>& active_aprovals = flat_set<account_id_type>(),
+                         const flat_set<account_id_type>& owner_approvals = flat_set<account_id_type>());
 
    /**
     *  @brief captures the result of evaluating the operations contained in the transaction
