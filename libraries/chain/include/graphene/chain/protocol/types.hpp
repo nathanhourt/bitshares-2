@@ -26,6 +26,7 @@
 #include <fc/io/varint.hpp>
 #include <fc/io/enum_type.hpp>
 #include <fc/crypto/sha224.hpp>
+#include <fc/crypto/sha1.hpp>
 #include <fc/crypto/elliptic.hpp>
 #include <fc/reflect/reflect.hpp>
 #include <fc/reflect/variant.hpp>
@@ -35,22 +36,6 @@
 #include <fc/string.hpp>
 
 #include <graphene/chain/protocol/ext.hpp>
-
-// TODO: move this to fc
-#include <fc/crypto/sha1.hpp>
-namespace fc { namespace raw {
-   template<typename T>
-   inline void pack( T& ds, const fc::sha1& ep, uint32_t _max_depth = 1 ) {
-      ds << ep;
-   }
-
-   template<typename T>
-   inline void unpack( T& ds, sha1& ep, uint32_t _max_depth = 1 ) {
-      ds >> ep;
-   }
-
-} }
-// /TODO: move to fc
 
 #include <fc/io/raw.hpp>
 #include <fc/uint128.hpp>
