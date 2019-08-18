@@ -48,6 +48,7 @@ struct hardfork_visitor {
    using first_unforked_op = custom_authority_create_operation;
    using BSIP_40_ops = TL::list<custom_authority_create_operation, custom_authority_update_operation,
                                 custom_authority_delete_operation>;
+   using TNT_ops = TL::list<tank_create_operation>;
    fc::time_point_sec now;
 
    hardfork_visitor(fc::time_point_sec now) : now(now) {}
@@ -60,6 +61,9 @@ struct hardfork_visitor {
    template<typename Op>
    std::enable_if_t<TL::contains<BSIP_40_ops, Op>(), bool>
    visit() { return HARDFORK_BSIP_40_PASSED(now); }
+   template<typename Op>
+   std::enable_if_t<TL::contains<TNT_ops, Op>(), bool>
+   visit() { return HARDFORK_BSIP_72_PASSED(now); }
    /// @}
 
    /// typelist::runtime::dispatch adaptor

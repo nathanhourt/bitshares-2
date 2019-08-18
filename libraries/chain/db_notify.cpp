@@ -305,6 +305,10 @@ struct get_impacted_account_visitor
    {
       _impacted.insert( op.fee_payer() ); // account
    }
+   void operator()( const tank_create_operation& op )
+   {
+      op.get_impacted_accounts( _impacted );
+   }
 };
 
 } // namespace detail
@@ -324,7 +328,8 @@ void transaction_get_impacted_accounts( const transaction& tx, flat_set<account_
     operation_get_impacted_accounts( op, result, ignore_custom_operation_required_auths );
 }
 
-void get_relevant_accounts( const object* obj, flat_set<account_id_type>& accounts, bool ignore_custom_operation_required_auths ) {
+void get_relevant_accounts( const object* obj, flat_set<account_id_type>& accounts,
+                            bool ignore_custom_operation_required_auths ) {
    if( obj->id.space() == protocol_ids )
    {
       switch( (object_type)obj->id.type() )
@@ -409,6 +414,8 @@ void get_relevant_accounts( const object* obj, flat_set<account_id_type>& accoun
            FC_ASSERT( cust_auth_obj != nullptr );
            accounts.insert( cust_auth_obj->account );
            add_authority_accounts( accounts, cust_auth_obj->auth );
+        } case tank_object_type:{
+              #warning TODO: Tank object notifications
         }
       }
    }

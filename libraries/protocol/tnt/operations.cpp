@@ -22,21 +22,25 @@
  * THE SOFTWARE.
  */
 
-#include "restriction_predicate.hxx"
+#include <graphene/protocol/tnt/operations.hpp>
 
 namespace graphene { namespace protocol {
 
-using result_type = object_restriction_predicate<operation>;
-
-result_type get_restriction_predicate_list_7(size_t idx, vector<restriction> rs) {
-   return typelist::runtime::dispatch(operation_list_7::list(), idx, [&rs] (auto t) -> result_type {
-      using Op = typename decltype(t)::type;
-      static_assert(typelist::contains<operation::list, Op>(), "");
-      return [p=restrictions_to_predicate<Op>(std::move(rs), true)] (const operation& op) {
-         FC_ASSERT(op.which() == operation::tag<Op>::value,
-                   "Supplied operation is incorrect type for restriction predicate");
-         return p(op.get<Op>());
-      };
-   });
+share_type tank_create_operation::calculate_fee(const fee_parameters_type& params) const {
+   return params.base_fee;
 }
-} }
+
+void tank_create_operation::validate() const {
+   FC_ASSERT(fee.amount > 0, "Must have positive fee");
+   FC_ASSERT(deposit_amount > 0, "Must have positive deposit");
+   FC_ASSERT(taps.size() > 0, "Must have at least one tap");
+   taps[0].validate_emergency();
+   std::for_each(++taps.begin(), taps.end(), [](const tnt::tap& tap) { tap.validate(); });
+}
+
+void tank_create_operation::get_impacted_accounts(flat_set<account_id_type>& impacted) const {
+   impacted.insert(payer);
+#warning TODO: Impacted accounts
+}
+
+} } // namespace graphene::protocol

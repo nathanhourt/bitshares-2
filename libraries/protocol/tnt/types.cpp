@@ -22,21 +22,24 @@
  * THE SOFTWARE.
  */
 
-#include "restriction_predicate.hxx"
+#include <fc/exception/exception.hpp>
 
-namespace graphene { namespace protocol {
+#include <graphene/protocol/tnt/types.hpp>
 
-using result_type = object_restriction_predicate<operation>;
+namespace graphene { namespace protocol { namespace tnt {
 
-result_type get_restriction_predicate_list_7(size_t idx, vector<restriction> rs) {
-   return typelist::runtime::dispatch(operation_list_7::list(), idx, [&rs] (auto t) -> result_type {
-      using Op = typename decltype(t)::type;
-      static_assert(typelist::contains<operation::list, Op>(), "");
-      return [p=restrictions_to_predicate<Op>(std::move(rs), true)] (const operation& op) {
-         FC_ASSERT(op.which() == operation::tag<Op>::value,
-                   "Supplied operation is incorrect type for restriction predicate");
-         return p(op.get<Op>());
-      };
-   });
+void tap::validate() const {
+   FC_ASSERT(connected_sink.valid() || connect_authority.valid(),
+             "Tap must be connected, or specify a connect authority");
 }
-} }
+
+void tap::validate_emergency() const
+{
+   validate();
+   FC_ASSERT(requirements.empty(), "Emergency tap must have no tap requirements");
+   FC_ASSERT(open_authority.valid(), "Emergency tap must specify an open authority");
+   FC_ASSERT(connect_authority.valid(), "Emergency tap must specify a connect authority");
+   FC_ASSERT(destructor_tap == true, "Emergency tap must be a destructor tap");
+}
+
+} } } // namespace graphene::protocol::tnt

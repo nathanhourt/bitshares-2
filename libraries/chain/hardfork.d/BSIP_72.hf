@@ -1,0 +1,5 @@
+// BSIP 72: Tanks and Taps
+#ifndef HARDFORK_BSIP_72_TIME
+#define HARDFORK_BSIP_72_TIME (fc::time_point_sec( 1672531200 ) ) // 2023-01-01T00:00:00Z
+#define HARDFORK_BSIP_72_PASSED(t) (t > HARDFORK_BSIP_72_TIME)
+#endif

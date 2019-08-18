@@ -40,6 +40,7 @@
 #include <graphene/protocol/witness.hpp>
 #include <graphene/protocol/worker.hpp>
 #include <graphene/protocol/htlc.hpp>
+#include <graphene/protocol/tnt/operations.hpp>
 
 namespace graphene { namespace protocol {
 
@@ -105,7 +106,8 @@ namespace graphene { namespace protocol {
             htlc_refund_operation,           // VIRTUAL
             custom_authority_create_operation,
             custom_authority_update_operation,
-            custom_authority_delete_operation
+            custom_authority_delete_operation,
+            tank_create_operation
          > operation;
 
    /// @} // operations group

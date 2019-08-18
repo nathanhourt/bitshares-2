@@ -22,21 +22,39 @@
  * THE SOFTWARE.
  */
 
-#include "restriction_predicate.hxx"
+#pragma once
+
+#include <graphene/protocol/base.hpp>
+#include <graphene/protocol/asset.hpp>
+#include <graphene/protocol/tnt/types.hpp>
 
 namespace graphene { namespace protocol {
 
-using result_type = object_restriction_predicate<operation>;
+struct tank_create_operation : public base_operation {
+   struct fee_parameters_type {
+      uint64_t base_fee = 5 * GRAPHENE_BLOCKCHAIN_PRECISION;
+   };
 
-result_type get_restriction_predicate_list_7(size_t idx, vector<restriction> rs) {
-   return typelist::runtime::dispatch(operation_list_7::list(), idx, [&rs] (auto t) -> result_type {
-      using Op = typename decltype(t)::type;
-      static_assert(typelist::contains<operation::list, Op>(), "");
-      return [p=restrictions_to_predicate<Op>(std::move(rs), true)] (const operation& op) {
-         FC_ASSERT(op.which() == operation::tag<Op>::value,
-                   "Supplied operation is incorrect type for restriction predicate");
-         return p(op.get<Op>());
-      };
-   });
-}
-} }
+   /// Fee to pay for the create operation
+   asset fee;
+   /// Account that pays for the fee and deposit
+   account_id_type payer;
+   /// Amount to pay for deposit (CORE asset)
+   share_type deposit_amount;
+   /// Type of asset the tank will hold
+   asset_id_type contained_asset;
+   /// Taps that will be attached to the tank
+   vector<tnt::tap> taps;
+   /// Attachments that will be attached to the tank
+   vector<tnt::tank_attachment> attachments;
+
+   account_id_type fee_payer() const { return payer; }
+   share_type calculate_fee(const fee_parameters_type& params) const;
+   void validate() const;
+   void get_impacted_accounts(flat_set<account_id_type>& impacted) const;
+};
+
+} } // namespace graphene::protocol
+
+FC_REFLECT(graphene::protocol::tank_create_operation::fee_parameters_type, (base_fee))
+FC_REFLECT(graphene::protocol::tank_create_operation, (fee)(payer))
