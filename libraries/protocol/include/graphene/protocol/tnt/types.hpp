@@ -26,11 +26,16 @@
 
 #include <fc/reflect/reflect.hpp>
 #include <fc/static_variant.hpp>
+#include <fc/crypto/hash160.hpp>
 
 #include <graphene/protocol/authority.hpp>
 #include <graphene/protocol/types.hpp>
 
-namespace graphene { namespace protocol { namespace tnt {
+namespace graphene { namespace protocol {
+// Forward declare these so tank_schematic can take refs to them
+struct tank_create_operation;
+struct tank_update_operation;
+namespace tnt {
 /// \defgroup TNT Tanks and Taps
 /// Tanks and Taps defines a modular, composable framework for financial smart contracts. The fundamental design is
 /// that asset can be held in containers called tanks, and can be released from those tanks by taps, which are
@@ -55,6 +60,8 @@ namespace graphene { namespace protocol { namespace tnt {
 /// @{
 
 using index_type = uint16_t;
+struct tank_schematic;
+using tank_lookup_function = std::function<const tank_schematic*(tank_id_type)>;
 
 /// ID type for a tank attachment
 struct attachment_id_type {
@@ -164,7 +171,7 @@ struct periodic_flow_limit {
       time_point_sec creation_date;
    };
    /// Duration of periods in seconds
-   uint32_t period_duration_sec;
+   uint32_t period_duration_sec = 0;
    /// Meter tracking the total amount released; this will be reset when the period rolls over
    attachment_id_type meter_id;
    /// Maximum cumulative amount to release in a given period
@@ -174,7 +181,7 @@ struct periodic_flow_limit {
 /// Locks and unlocks the tap at specified times
 struct time_lock {
    /// If true, the tap is initially locked
-   bool start_locked;
+   bool start_locked = false;
    /// At each of these times, the tap will switch between locked and unlocked -- must all be in the future
    vector<time_point_sec> lock_unlock_times;
 };
@@ -235,13 +242,14 @@ struct delay_requirement {
    optional<authority> veto_authority;
    /// Period in seconds after unlock request until tap unlocks; when tap opens,
    /// all state values are reset
-   uint32_t delay_period_sec;
+   uint32_t delay_period_sec = 0;
 };
 
 /// Requires an argument containing the preimage of a specified hash in order to open the tap
-struct hash_preimage_requirement {
-   /// A string of the form "HASH_ALGORITHM:HASH_HEX_BYTES"
-   string hash;
+struct hash_lock {
+   using hash_type = static_variant<fc::sha256, fc::sha1, fc::ripemd160, fc::hash160>;
+   /// Specified hash value
+   hash_type hash;
    /// Size of the preimage in bytes; a preimage of a different size will be rejected
    /// If null, a matching preimage of any size will be accepted
    optional<uint16_t> preimage_size;
@@ -288,8 +296,7 @@ struct exchange_requirement {
 
 using tap_requirement = static_variant<immediate_flow_limit, cumulative_flow_limit, periodic_flow_limit, time_lock,
                                        minimum_tank_level, review_requirement, documentation_requirement,
-                                       delay_requirement, hash_preimage_requirement, ticket_requirement,
-                                       exchange_requirement>;
+                                       delay_requirement, hash_lock, ticket_requirement, exchange_requirement>;
 /// @}
 
 /// A structure on a tank which allows asset to be released from that tank by a particular authority with limits and
@@ -309,13 +316,34 @@ struct tap {
    bool destructor_tap;
 
    /// Internal consistency checks
-   void validate() const;
-   /// Internal consistency checks plus emergency tap checks
+   void validate(const tank_schematic& current_tank, const tank_lookup_function &tank_lookup = {}) const;
+   /// Consistency checks that only apply to the emergency tap
    void validate_emergency() const;
+};
+
+/// Description of a tank's taps and attachments; used to perform internal consistency checks
+struct tank_schematic {
+   /// Taps on this tank. ID 0 must be present, and must not have any tap_requirements
+   flat_map<index_type, tap> taps;
+   /// Counter of taps added; used to assign tap IDs
+   index_type tap_counter = 0;
+   /// Attachments on this tank
+   flat_map<index_type, tank_attachment> attachments;
+   /// Counter of attachments added; used to assign attachment IDs
+   index_type attachment_counter = 0;
+
+   /// Initialize from a tank_create_operation
+   static tank_schematic from_create_operation(const tank_create_operation& create_op);
+   /// Update from a tank_update_operation
+   void update_from_operation(const tank_update_operation& update_op);
+   /// Internal consistency checks
+   /// @param tank_lookup Get tank_schematic by tank ID; if unspecified, skip external reference checks
+   void validate(tank_lookup_function tank_lookup = {});
 };
 
 /// @}
 } } } // namespace graphene::protocol::tnt
+
 
 FC_REFLECT(graphene::protocol::tnt::attachment_id_type, (tank_id)(attachment_id))
 FC_REFLECT(graphene::protocol::tnt::tap_id_type, (tank_id)(tap_id))
@@ -344,7 +372,7 @@ FC_REFLECT(graphene::protocol::tnt::delay_requirement::state_type::request_type,
 FC_REFLECT(graphene::protocol::tnt::delay_requirement::state_type,
            (request_counter)(request_limit)(pending_requests))
 FC_REFLECT(graphene::protocol::tnt::delay_requirement, (veto_authority)(delay_period_sec))
-FC_REFLECT(graphene::protocol::tnt::hash_preimage_requirement, (hash)(preimage_size))
+FC_REFLECT(graphene::protocol::tnt::hash_lock, (hash)(preimage_size))
 FC_REFLECT(graphene::protocol::tnt::ticket_requirement::state_type::ticket_type,
            (tank_id)(tap_index)(max_withdrawal)(ticket_number))
 FC_REFLECT(graphene::protocol::tnt::ticket_requirement::state_type, (tickets_consumed))
@@ -354,6 +382,7 @@ FC_REFLECT(graphene::protocol::tnt::exchange_requirement, (meter_id)(release_per
 FC_REFLECT(graphene::protocol::tnt::tap,
            (connected_sink)(open_authority)(connect_authority)(requirements)(destructor_tap))
 
+FC_REFLECT_TYPENAME(graphene::protocol::tnt::hash_lock::hash_type)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::sink)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::asset_flow_limit)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::deposit_source_restrictor::deposit_path_element)

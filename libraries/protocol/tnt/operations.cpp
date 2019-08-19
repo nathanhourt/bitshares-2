@@ -33,9 +33,8 @@ share_type tank_create_operation::calculate_fee(const fee_parameters_type& param
 void tank_create_operation::validate() const {
    FC_ASSERT(fee.amount > 0, "Must have positive fee");
    FC_ASSERT(deposit_amount > 0, "Must have positive deposit");
-   FC_ASSERT(taps.size() > 0, "Must have at least one tap");
-   taps[0].validate_emergency();
-   std::for_each(++taps.begin(), taps.end(), [](const tnt::tap& tap) { tap.validate(); });
+
+   tnt::tank_schematic::from_create_operation(*this).validate();
 }
 
 void tank_create_operation::get_impacted_accounts(flat_set<account_id_type>& impacted) const {
