@@ -30,6 +30,8 @@ list(APPEND SOURCES account.cpp
                     worker.cpp
                     htlc.cpp
                     tnt/types.cpp
+                    tnt/lookups.cpp
+                    tnt/validation.cpp
                     tnt/operations.cpp)
 
 

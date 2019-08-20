@@ -60,8 +60,6 @@ namespace tnt {
 /// @{
 
 using index_type = uint16_t;
-struct tank_schematic;
-using tank_lookup_function = std::function<const tank_schematic*(tank_id_type)>;
 
 /// ID type for a tank attachment
 struct attachment_id_type {
@@ -78,8 +76,10 @@ struct tap_id_type {
    index_type tap_id;
 };
 
+/// An implicit tank ID which refers to the same tank as the item containing the reference
+struct same_tank{};
 /// A variant of ID types for all possible asset receivers
-using sink = static_variant<account_id_type, tank_id_type, attachment_id_type>;
+using sink = static_variant<same_tank, account_id_type, tank_id_type, attachment_id_type>;
 
 struct unlimited_flow{};
 /// A limit to the amount of asset that flows during a release of asset; either unlimited, or a maximum amount
@@ -89,59 +89,81 @@ using asset_flow_limit = static_variant<unlimited_flow, share_type>;
 /// Tank Attachments are objects which can be attached to a tank to provide additional functionality. For instance,
 /// attachments can be used to restrict what sources can deposit to a tank, to automatically open a tap after asset
 /// flows into the tank, or to measure how much asset has flowed into or out of a tank.
+///
+/// Tank attachments must all provide the following methods in their interface:
+/// If the attachment can receive asset, returns the type received; otherwise, returns null
+/// optional<asset_id_type> receives_asset() const;
+/// If the attachment can receive asset, returns the sink the asset is deposited to; otherwise, returns null
+/// optional<sink> output_sink() const;
 /// @{
 
 /// Receives asset and immediately releases it to a predetermined sink, maintaining a tally of the total amount that
 /// has flowed through
 struct asset_flow_meter {
-    struct state_type {
-        /// The amount of asset that has flowed through the meter
-        share_type metered_amount;
-    };
-    /// The type of asset which can flow through this meter
-    asset_id_type asset_type;
-    /// The sink which the metered asset is released to
-    sink destination_sink;
+   struct state_type {
+      /// The amount of asset that has flowed through the meter
+      share_type metered_amount;
+   };
+   /// The type of asset which can flow through this meter
+   asset_id_type asset_type;
+   /// The sink which the metered asset is released to
+   sink destination_sink;
+
+   optional<asset_id_type> receives_asset() const { return asset_type; }
+   optional<sink> output_sink() const { return destination_sink; }
 };
 
 /// Contains several patterns for sources that may deposit to the tank, and rejects any deposit that comes via a path
 /// that does not match against any pattern
 struct deposit_source_restrictor {
-    /// This type defines a wildcard sink type, which matches against any sink(s)
-    struct wildcard_sink {
-        /// If true, wildcard matches any number of sinks; otherwise, matches exactly one
-        bool repeatable;
-    };
-    /// A deposit path element may be a specific sink, or a wildcard to match any sink
-    using deposit_path_element = static_variant<sink, wildcard_sink>;
-    /// A deposit path is a sequence of sinks; a deposit path pattern is a series of sinks that incoming deposits
-    /// must have flowed through, which may include wildcards that will match against any sink(s)
-    using deposit_path_pattern = vector<deposit_path_element>;
+   /// This type defines a wildcard sink type, which matches against any sink(s)
+   struct wildcard_sink {
+      /// If true, wildcard matches any number of sinks; otherwise, matches exactly one
+      bool repeatable;
+   };
+   /// A deposit path element may be a specific sink, or a wildcard to match any sink
+   using deposit_path_element = static_variant<sink, wildcard_sink>;
+   /// A deposit path is a sequence of sinks; a deposit path pattern is a series of sinks that incoming deposits
+   /// must have flowed through, which may include wildcards that will match against any sink(s)
+   using deposit_path_pattern = vector<deposit_path_element>;
 
-    /// A list of path patterns that a deposit is checked against; if a deposit's path doesn't match any pattern, it
-    /// is rejected
-    vector<deposit_path_pattern> legal_deposit_paths;
-    /// The sink that asset is released to after flowing through the restrictor
-    sink destination_sink;
+   /// A list of path patterns that a deposit is checked against; if a deposit's path doesn't match any pattern, it
+   /// is rejected
+   vector<deposit_path_pattern> legal_deposit_paths;
+   /// The sink that asset is released to after flowing through the restrictor
+   sink destination_sink;
+   /// The type of asset which can flow through the restrictor (must match tank asset)
+   asset_id_type asset_type;
+
+   optional<asset_id_type> receives_asset() const { return asset_type; }
+   optional<sink> output_sink() const { return destination_sink; }
 };
 
 /// Receives asset and immediately releases it to a predetermined sink, scheduling a tap on the tank it is attached
 /// to to be opened once the received asset stops moving
 struct tap_opener {
-    /// Index of the tap to open (must be on the same tank as the opener)
-    index_type tap_index;
-    /// The amount to release
-    asset_flow_limit release_amount;
-    /// The sink that asset is released to after flowing through the opener
-    sink destination_sink;
+   /// Index of the tap to open (must be on the same tank as the opener)
+   index_type tap_index;
+   /// The amount to release
+   asset_flow_limit release_amount;
+   /// The sink that asset is released to after flowing through the opener
+   sink destination_sink;
+   /// The type of asset which can flow through the opener
+   asset_id_type asset_type;
+
+   optional<asset_id_type> receives_asset() const { return asset_type; }
+   optional<sink> output_sink() const { return destination_sink; }
 };
 
-/// Allows a specified authority to update the sink a tank attachment releases processed asset into
+/// Allows a specified authority to update the sink a specified tank attachment releases processed asset into
 struct attachment_connect_authority {
    /// The authority that can reconnect the attachment
    authority connect_authority;
-   /// The attachment that can be reconnected
-   attachment_id_type attachment_id;
+   /// The attachment that can be reconnected (must be on the current tank)
+   index_type attachment_id;
+
+   optional<asset_id_type> receives_asset() const { return {}; }
+   optional<sink> output_sink() const { return {}; }
 };
 
 using tank_attachment = static_variant<asset_flow_meter, deposit_source_restrictor, tap_opener,
@@ -314,11 +336,6 @@ struct tap {
    vector<tap_requirement> requirements;
    /// If true, this tap can be used to destroy the tank when it empties; emergency tap must be a destructor tap
    bool destructor_tap;
-
-   /// Internal consistency checks
-   void validate(const tank_schematic& current_tank, const tank_lookup_function &tank_lookup = {}) const;
-   /// Consistency checks that only apply to the emergency tap
-   void validate_emergency() const;
 };
 
 /// Description of a tank's taps and attachments; used to perform internal consistency checks
@@ -331,23 +348,24 @@ struct tank_schematic {
    flat_map<index_type, tank_attachment> attachments;
    /// Counter of attachments added; used to assign attachment IDs
    index_type attachment_counter = 0;
+   /// Type of asset this tank can store
+   asset_id_type asset_type;
 
    /// Initialize from a tank_create_operation
    static tank_schematic from_create_operation(const tank_create_operation& create_op);
    /// Update from a tank_update_operation
    void update_from_operation(const tank_update_operation& update_op);
-   /// Internal consistency checks
-   /// @param tank_lookup Get tank_schematic by tank ID; if unspecified, skip external reference checks
-   void validate(tank_lookup_function tank_lookup = {});
 };
 
 /// @}
+
 } } } // namespace graphene::protocol::tnt
 
 
 FC_REFLECT(graphene::protocol::tnt::attachment_id_type, (tank_id)(attachment_id))
 FC_REFLECT(graphene::protocol::tnt::tap_id_type, (tank_id)(tap_id))
 FC_REFLECT(graphene::protocol::tnt::unlimited_flow,)
+FC_REFLECT(graphene::protocol::tnt::same_tank,)
 
 FC_REFLECT(graphene::protocol::tnt::asset_flow_meter::state_type, (metered_amount))
 FC_REFLECT(graphene::protocol::tnt::asset_flow_meter, (asset_type)(destination_sink))
@@ -381,6 +399,8 @@ FC_REFLECT(graphene::protocol::tnt::exchange_requirement::state_type, (amount_re
 FC_REFLECT(graphene::protocol::tnt::exchange_requirement, (meter_id)(release_per_tick)(tick_amount))
 FC_REFLECT(graphene::protocol::tnt::tap,
            (connected_sink)(open_authority)(connect_authority)(requirements)(destructor_tap))
+FC_REFLECT(graphene::protocol::tnt::tank_schematic,
+           (taps)(tap_counter)(attachments)(attachment_counter)(asset_type))
 
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::hash_lock::hash_type)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::sink)

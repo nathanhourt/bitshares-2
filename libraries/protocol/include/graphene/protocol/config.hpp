@@ -96,6 +96,9 @@
 #define GRAPHENE_DEFAULT_WORKER_BUDGET_PER_DAY            (GRAPHENE_BLOCKCHAIN_PRECISION * int64_t(500) * 1000 )
 #define GRAPHENE_DEFAULT_MINIMUM_FEEDS                       7
 
+#define GRAPHENE_DEFAULT_MAX_SINK_CHAIN_LENGTH               7
+#define GRAPHENE_DEFAULT_MAX_TAPS_TO_OPEN                    17
+
 #define GRAPHENE_MIN_BLOCK_SIZE_LIMIT (GRAPHENE_MIN_TRANSACTION_SIZE_LIMIT*5) // 5 transactions per block
 
 /** percentage fields are fixed point with a denominator of 10,000 */

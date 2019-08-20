@@ -22,27 +22,20 @@
  * THE SOFTWARE.
  */
 
-#include <graphene/protocol/tnt/operations.hpp>
-#include <graphene/protocol/tnt/validation.hpp>
+#include <graphene/protocol/base.hpp>
 
-namespace graphene { namespace protocol {
+namespace graphene { namespace protocol { namespace tnt {
 
-share_type tank_create_operation::calculate_fee(const fee_parameters_type& params) const {
-   return params.base_fee;
-}
+/// Chain-defined parameters and limits for TNT structures
+struct parameters_type {
+   /// The maximum length of a sink chain (such as a sequence of tank attachments)
+   uint16_t max_sink_chain_length = GRAPHENE_DEFAULT_MAX_SINK_CHAIN_LENGTH;
+   /// The maximum number of taps a single transaction may open
+   uint16_t max_taps_to_open = GRAPHENE_DEFAULT_MAX_TAPS_TO_OPEN;
 
-void tank_create_operation::validate() const {
-   FC_ASSERT(fee.amount > 0, "Must have positive fee");
-   FC_ASSERT(deposit_amount > 0, "Must have positive deposit");
+   extensions_type extensions;
+};
 
-   // We don't have access to the real limits here, so check against upper bound limits
-   tnt::parameters_type validation_parameters {100, 100, {}};
-   tnt::tank_validator(tnt::tank_schematic::from_create_operation(*this), validation_parameters).validate_tank();
-}
+} } } // namespace graphene::protocol::tnt
 
-void tank_create_operation::get_impacted_accounts(flat_set<account_id_type>& impacted) const {
-   impacted.insert(payer);
-#warning TODO: Impacted accounts
-}
-
-} } // namespace graphene::protocol
+FC_REFLECT(graphene::protocol::tnt::parameters_type, (max_sink_chain_length)(max_taps_to_open)(extensions))
