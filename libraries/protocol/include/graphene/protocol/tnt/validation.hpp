@@ -32,27 +32,47 @@ using requirement_counter_type = map<tap_requirement::tag_type, index_type>;
 
 /// A class providing validation and summary information for tanks and tank accessories
 class tank_validator : public lookup_utilities {
-   const parameters_type parameters;
+   const size_t max_sink_chain_length;
+   const fc::optional<tank_id_type> tank_id;
 
    // Counters of tank accessories
    attachment_counter_type attachment_counters;
    requirement_counter_type requirement_counters;
 
 public:
-   tank_validator(const tank_schematic& schema, parameters_type parameters,
-                  const tank_lookup_function& lookup_tank = {})
-       : lookup_utilities(schema, lookup_tank), parameters(parameters) {}
+   /** @brief Create a tank_validator to validate a specified tank
+     * @param schema Schematic of the tank to be validated
+     * @param max_sink_chain_length Maximum length to walk sink chains before yielding an error
+     * @param lookup_tank [Optional] A callback function to retrieve a tank_schematic corresponding to a tank ID. If
+     * omitted, references to other tanks will be unchecked and presumed valid.
+     * @param tank_id [Optional] ID of the tank being validated. Provide to enable more accurate validation of tap
+     * connections to tanks using a @ref deposit_source_restrictor
+     */
+   tank_validator(const tank_schematic& schema, size_t max_sink_chain_length,
+                  const tank_lookup_function& lookup_tank = {}, fc::optional<tank_id_type> tank_id = {})
+       : lookup_utilities(schema, lookup_tank), max_sink_chain_length(max_sink_chain_length), tank_id(tank_id) {}
 
    /// @brief Validate the specified attachment
    void validate_attachment(index_type attachment_id);
    /// @brief Validate a particular requirement on the specified tap
    void validate_tap_requirement(index_type tap_id, index_type requirement_index);
-   /// @brief Validate the specified tap
+   /// @brief Validate the specified tap, including its connection if connected
    void validate_tap(index_type tap_id);
    /// @brief Validate the emergency tap
    void validate_emergency_tap();
    /// @brief Validate the full tank schematic, including all taps, requirements, and tank attachments
+   ///
+   /// This will perform the following checks:
+   ///  - Internal consistency checks of all tank attachments
+   ///  - Emergency tap checks
+   ///  - Internal consistency checks of all taps
+   ///    - Internal consistency checks of all tap requirements
+   ///    - Integrity check of full deposit path if tap is connected
+   ///    - Check that deposit path is legal if it terminates on a tank with a @ref deposit_source_restrictor
    void validate_tank();
+
+   /// @brief If the specified tap is connected, check that its connection is valid
+   void check_tap_connection(index_type tap_id) const;
 
    const attachment_counter_type& get_attachment_counts() const { return attachment_counters; }
    const requirement_counter_type& get_requirement_counts() const { return requirement_counters; }

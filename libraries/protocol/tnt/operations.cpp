@@ -35,9 +35,8 @@ void tank_create_operation::validate() const {
    FC_ASSERT(fee.amount > 0, "Must have positive fee");
    FC_ASSERT(deposit_amount > 0, "Must have positive deposit");
 
-   // We don't have access to the real limits here, so check against upper bound limits
-   tnt::parameters_type validation_parameters {100, 100, {}};
-   tnt::tank_validator(tnt::tank_schematic::from_create_operation(*this), validation_parameters).validate_tank();
+   // We don't have access to the real limits here, so check with max sink chain length of 100
+   tnt::tank_validator(tnt::tank_schematic::from_create_operation(*this), 100).validate_tank();
 }
 
 void tank_create_operation::get_impacted_accounts(flat_set<account_id_type>& impacted) const {

@@ -54,17 +54,30 @@ using sink_asset = static_variant<asset_id_type, any_asset, no_asset, need_looku
 /// A result type for what asset a tank attachment receives
 using attachment_asset = static_variant<asset_id_type, no_asset, need_lookup_function, nonexistent_object>;
 
-/// A result type indicating that a sink is unsuitable for the context it is used in
+/// A chain of sinks where each sink deposits to the one following it until the final sink releases to a destination
+struct sink_chain {
+   /// Sinks in the chain
+   vector<const_ref<sink>> sinks;
+   /// "Current tank" for the final sink in the chain. This is null if and only if the chain never connects to a
+   /// remote tank.
+   optional<tank_id_type> final_sink_tank;
+
+   sink_chain() = default;
+   sink_chain(const_ref<sink> first_sink) : sinks{{first_sink}} {}
+};
+/// A result type indicating that a sink is incapable of receiving the provided asset
 struct bad_sink {
-   enum reason_enum { receives_wrong_asset, receives_no_asset, remote_sink };
+   enum reason_enum { receives_wrong_asset, receives_no_asset };
    reason_enum reason;
    const sink& s;
 };
+/// A result type for the sink a tank attachment deposits to
+using attachment_sink_result = static_variant<const_ref<sink>, bad_sink, need_lookup_function, nonexistent_object>;
 /// A result type indicating that a sink chain is longer than the maximum length
 struct exceeded_max_chain_length {};
 /// A result type for the destination a sink chain deposits to
-using destination_sink_result = static_variant<const_ref<sink>, bad_sink, exceeded_max_chain_length,
-                                               need_lookup_function, nonexistent_object>;
+using sink_chain_result = static_variant<sink_chain, exceeded_max_chain_length, bad_sink,
+                                         need_lookup_function, nonexistent_object>;
 
 /// A class providing information retrieval utilities for tanks, tank accessories, and sinks
 class lookup_utilities {
@@ -86,29 +99,25 @@ public:
    /// @brief Lookup what asset type a tank_attachment can receive
    attachment_asset get_attachment_asset(const attachment_id_type& id) const;
    /// @brief Lookup what sink a tank_attachment releases received asset to
-   destination_sink_result get_attachment_sink(const attachment_id_type& id) const;
+   attachment_sink_result get_attachment_sink(const attachment_id_type& id) const;
    /// @brief Lookup what asset type(s) a sink can receive
    sink_asset get_sink_asset(const sink& s) const;
 
-   /// @brief Lookup what destination the sink deposits to
-   /// @param s The sink to begin search at; if this sink references an asset storage, it will be returned
+   /// @brief Get the chain of sinks starting at the provided sink
+   /// @param s The sink to begin traversal at
    /// @param max_chain_length The maximum number of sinks to follow
    /// @param asset_type [Optional] If provided, checks that all sinks in chain accept supplied asset type
    ///
-   /// Sinks receive asset when it is released and specify where it should go next; however, the location specified
-   /// by a sink is not necessarily a depository that stores asset over time. Sinks can point to tank accessories,
-   /// which cannot store asset and must immediately release it to another sink. Thus when a sink points to a tank
-   /// attachment, it does not record the destination where the asset will be stored. To find this destination, it is
-   /// necessary to follow the chain of tank attachment sinks to find one that specifies an asset storage (i.e. an
-   /// account or tank).
+   /// Sinks receive asset when it is released and specify where it should go next. The location specified by a sink
+   /// is not necessarily a depository that stores asset over time; rather, sinks can point to tank attachments,
+   /// which cannot store asset and must immediately release it to another sink. Thus tank attachments (and perhaps
+   /// other sink targets in the future) can form chains of sinks which must eventually terminate in a depository.
    ///
-   /// This function follows a chain of tank attachment sinks to find the asset depository that the sink deposits to.
-   /// It can optionally check that all sinks in the chain accept the specified asset type.
-   ///
-   /// NOTICE: This function currently will not follow tank attachments to other tanks than the current tank. All
-   /// attachments must be on the same tank, or an error will be reported.
-   destination_sink_result get_destination_sink(const_ref<sink> s, size_t max_chain_length,
-                                                optional<asset_id_type> asset_type = {}) const;
+   /// This function follows a chain of sinks to find the asset depository that the provided sink eventually deposits
+   /// to, and returns the full chain. It will detect if the chain references any nonexistent objects, and it can
+   /// optionally check that all sinks in the chain accept the provided asset type.
+   sink_chain_result get_sink_chain(const_ref<sink> s, size_t max_chain_length,
+                                    optional<asset_id_type> asset_type = {}) const;
 };
 
 } } } // namespace graphene::protocol::tnt
@@ -120,10 +129,11 @@ FC_REFLECT(graphene::protocol::tnt::no_asset, (attachment_id))
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::sink_asset)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::attachment_asset)
 FC_REFLECT_ENUM(graphene::protocol::tnt::bad_sink::reason_enum,
-                (receives_wrong_asset)(receives_no_asset)(remote_sink))
-FC_REFLECT(graphene::protocol::tnt::exceeded_max_chain_length, )
+                (receives_wrong_asset)(receives_no_asset))
+FC_REFLECT(graphene::protocol::tnt::sink_chain, (sinks)(final_sink_tank))
 FC_REFLECT(graphene::protocol::tnt::bad_sink, (reason))
-FC_REFLECT_TYPENAME(graphene::protocol::tnt::destination_sink_result)
+FC_REFLECT(graphene::protocol::tnt::exceeded_max_chain_length, )
+FC_REFLECT_TYPENAME(graphene::protocol::tnt::sink_chain_result)
 
 namespace fc {
 template<class T>
