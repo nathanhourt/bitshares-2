@@ -814,8 +814,7 @@ void database_fixture::issue_uia( account_id_type recipient_id, asset amount )
    issue_uia( recipient_id(db), amount );
 }
 
-void database_fixture::change_fees(
-   const fee_parameters::flat_set_type& new_params,
+void database_fixture::change_fees(const fee_parameters::flat_set_type &new_params,
    uint32_t new_scale /* = 0 */
    )
 {
