@@ -408,7 +408,7 @@ FC_REFLECT(graphene::protocol::tnt::asset_flow_meter::state_type, (metered_amoun
 FC_REFLECT(graphene::protocol::tnt::asset_flow_meter, (asset_type)(destination_sink))
 FC_REFLECT(graphene::protocol::tnt::deposit_source_restrictor::wildcard_sink, (repeatable))
 FC_REFLECT(graphene::protocol::tnt::deposit_source_restrictor, (legal_deposit_paths))
-FC_REFLECT(graphene::protocol::tnt::tap_opener, (tap_index)(release_amount)(destination_sink))
+FC_REFLECT(graphene::protocol::tnt::tap_opener, (tap_index)(release_amount)(destination_sink)(asset_type))
 FC_REFLECT(graphene::protocol::tnt::attachment_connect_authority, (connect_authority)(attachment_id))
 
 FC_REFLECT(graphene::protocol::tnt::immediate_flow_limit, (limit))

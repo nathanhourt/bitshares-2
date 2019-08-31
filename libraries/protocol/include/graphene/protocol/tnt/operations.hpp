@@ -33,6 +33,7 @@ namespace graphene { namespace protocol {
 struct tank_create_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = 5 * GRAPHENE_BLOCKCHAIN_PRECISION;
+      uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 10;
    };
 
    /// Fee to pay for the create operation
@@ -57,4 +58,5 @@ struct tank_create_operation : public base_operation {
 } } // namespace graphene::protocol
 
 FC_REFLECT(graphene::protocol::tank_create_operation::fee_parameters_type, (base_fee))
-FC_REFLECT(graphene::protocol::tank_create_operation, (fee)(payer))
+FC_REFLECT(graphene::protocol::tank_create_operation,
+           (fee)(payer)(deposit_amount)(contained_asset)(taps)(attachments))

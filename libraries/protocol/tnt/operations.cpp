@@ -28,7 +28,7 @@
 namespace graphene { namespace protocol {
 
 share_type tank_create_operation::calculate_fee(const fee_parameters_type& params) const {
-   return params.base_fee;
+   return params.base_fee + (fc::raw::pack_size(*this) * params.price_per_byte);
 }
 
 void tank_create_operation::validate() const {
@@ -41,7 +41,7 @@ void tank_create_operation::validate() const {
 
 void tank_create_operation::get_impacted_accounts(flat_set<account_id_type>& impacted) const {
    impacted.insert(payer);
-#warning TODO: Impacted accounts
+   tnt::tank_validator(tnt::tank_schematic::from_create_operation(*this), 100).get_referenced_accounts(impacted);
 }
 
 } } // namespace graphene::protocol

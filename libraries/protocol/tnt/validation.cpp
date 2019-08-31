@@ -299,6 +299,68 @@ void tank_validator::check_tap_connection(index_type tap_id) const {
    }
 }
 
+void tank_validator::get_referenced_accounts(flat_set<account_id_type> &accounts) const {
+   struct {
+      flat_set<account_id_type>& accounts;
+
+      // Sink
+      void operator()(const sink& s) const {
+         if (s.is_type<account_id_type>()) accounts.insert(s.get<account_id_type>());
+      }
+
+      // Tank attachments
+      void operator()(const asset_flow_meter& afm) const { (*this)(afm.destination_sink); }
+      void operator()(const deposit_source_restrictor& dsr) const {
+         for (const auto& pattern : dsr.legal_deposit_paths)
+            for (const auto& element : pattern)
+               if (element.is_type<sink>()) (*this)(element.get<sink>());
+      }
+      void operator()(const tap_opener& top) const { (*this)(top.destination_sink); }
+      void operator()(const attachment_connect_authority& aca) const {
+         add_authority_accounts(accounts, aca.connect_authority);
+      }
+
+      // Tap requirements
+      void operator()(const immediate_flow_limit&) const {}
+      void operator()(const cumulative_flow_limit&) const {}
+      void operator()(const periodic_flow_limit&) const {}
+      void operator()(const time_lock&) const {}
+      void operator()(const minimum_tank_level&) const {}
+      void operator()(const review_requirement& rreq) const { add_authority_accounts(accounts, rreq.reviewer); }
+      void operator()(const documentation_requirement&) const {}
+      void operator()(const delay_requirement& dreq) const {
+         if (dreq.veto_authority.valid())
+            add_authority_accounts(accounts, *dreq.veto_authority);
+      }
+      void operator()(const hash_lock&) const {}
+      void operator()(const ticket_requirement&) const {}
+      void operator()(const exchange_requirement&) const {}
+
+      // Accessory containers
+      void operator()(const tap_requirement& treq) const {
+         fc::typelist::runtime::dispatch(tap_requirement::list(), treq.which(), [this, &treq](auto t) {
+            (*this)(treq.get<typename decltype(t)::type>());
+         });
+      }
+      void operator()(const tank_attachment& tatt) const {
+         fc::typelist::runtime::dispatch(tank_attachment::list(), tatt.which(), [this, &tatt](auto t) {
+            (*this)(tatt.get<typename decltype(t)::type>());
+         });
+      }
+   } check_accessory{accounts};
+
+   for (const auto& tap_pair : current_tank.taps) {
+      const auto& tap = tap_pair.second;
+      if (tap.open_authority.valid()) add_authority_accounts(accounts, *tap.open_authority);
+      if (tap.connect_authority.valid()) add_authority_accounts(accounts, *tap.connect_authority);
+      if (tap.connected_sink.valid()) check_accessory(*tap.connected_sink);
+      for (const auto& req : tap.requirements)
+         check_accessory(req);
+   }
+   for (const auto& att_pair : current_tank.attachments)
+      check_accessory(att_pair.second);
+}
+
 void tank_validator::validate_tap(index_type tap_id) {
    FC_ASSERT(current_tank.taps.contains(tap_id), "Requested tap does not exist");
    const auto& tap = current_tank.taps.at(tap_id);

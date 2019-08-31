@@ -74,7 +74,12 @@ public:
    /// @brief If the specified tap is connected, check that its connection is valid
    void check_tap_connection(index_type tap_id) const;
 
+   /// Add every account referenced by this tank_schematic to the set
+   void get_referenced_accounts(flat_set<account_id_type>& accounts) const;
+
+   /// Get counts of each tank_attachment type on the schematic (these are tallied during validation)
    const attachment_counter_type& get_attachment_counts() const { return attachment_counters; }
+   /// Get counts of each tap_requirement type on the schematic (these are tallied during validation)
    const requirement_counter_type& get_requirement_counts() const { return requirement_counters; }
 };
 
