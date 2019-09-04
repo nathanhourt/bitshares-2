@@ -44,4 +44,30 @@ void tank_create_operation::get_impacted_accounts(flat_set<account_id_type>& imp
    tnt::tank_validator(tnt::tank_schematic::from_create_operation(*this), 100).get_referenced_accounts(impacted);
 }
 
+share_type tank_update_operation::calculate_fee(const fee_parameters_type &params) const {
+   return params.base_fee + (fc::raw::pack_size(*this) * params.price_per_byte);
+}
+
+void tank_update_operation::validate() const {
+   FC_ASSERT(fee.amount > 0, "Must have positive fee");
+   FC_ASSERT(taps_to_remove.count(0) == 0, "Emergency tap cannot be removed; it can only be replaced");
+
+   if (taps_to_replace.contains(0)) tnt::tank_validator::validate_emergency_tap(taps_to_replace.at(0));
+   for (const auto& tap_pair : taps_to_replace) tnt::tank_validator::validate_tap(tap_pair.second);
+   for (const auto& tap : taps_to_add) tnt::tank_validator::validate_tap(tap);
+   for (const auto& att_pair : attachments_to_replace) tnt::tank_validator::validate_attachment(att_pair.second);
+   for (const auto& att : attachments_to_add) tnt::tank_validator::validate_attachment(att);
+}
+
+void tank_update_operation::get_impacted_accounts(flat_set<account_id_type>& impacted) const {
+   impacted.insert(payer);
+   add_authority_accounts(impacted, update_authority);
+
+   using Val = tnt::tank_validator;
+   for (const auto& tap_pair : taps_to_replace) Val::get_referenced_accounts(impacted, tap_pair.second);
+   for (const auto& tap : taps_to_add) Val::get_referenced_accounts(impacted, tap);
+   for (const auto& att_pair : attachments_to_replace) Val::get_referenced_accounts(impacted, att_pair.second);
+   for (const auto& att : attachments_to_add) Val::get_referenced_accounts(impacted, att);
+}
+
 } } // namespace graphene::protocol

@@ -34,6 +34,150 @@ void check_authority(const authority& auth, const string& name_for_errors) {
    FC_ASSERT(!(auth == authority::null_authority()), + name_for_errors + " must not be null authority");
 }
 
+struct internal_attachment_checker {
+   using result_type = void;
+
+   void operator()(const asset_flow_meter&) const {}
+   void operator()(const deposit_source_restrictor& att) const {
+      FC_ASSERT(att.legal_deposit_paths.size() > 0,
+                "Deposit source restrictor must accept at least one deposit path");
+      using path_pattern = deposit_source_restrictor::deposit_path_pattern;
+      using wildcard_element = deposit_source_restrictor::wildcard_sink;
+      std::for_each(att.legal_deposit_paths.begin(), att.legal_deposit_paths.end(),
+                    [](const path_pattern& path) { try {
+         FC_ASSERT(path.size() > 1,
+                   "Deposit path patterns must contain at least two elements for a source, and a destination");
+         if (!path.front().is_type<wildcard_element>())
+            FC_ASSERT(is_terminal_sink(path.front().get<sink>()),
+                      "Deposit path patterns must begin with a terminal sink or a wildcard");
+         if (!path.back().is_type<wildcard_element>()) {
+            const sink& final_sink = path.back().get<sink>();
+            FC_ASSERT(is_terminal_sink(final_sink),
+                      "Deposit path patterns must end with a terminal sink or a wildcard");
+            FC_ASSERT(final_sink.is_type<same_tank>() || final_sink.is_type<tank_id_type>(),
+                      "Deposit path patterns must end with the current tank or a wildcard");
+         }
+         if (path.size() < 3)
+            FC_ASSERT(!path.front().is_type<wildcard_element>(),
+                      "A single wildcard is not a valid deposit source restrictor pattern");
+         for (size_t i = 0; i < path.size(); ++i) {
+            using wildcard = deposit_source_restrictor::wildcard_sink;
+            if (i > 0 && path[i].is_type<wildcard>() && path[i-1].is_type<wildcard>())
+               FC_ASSERT(!path[i].get<wildcard>().repeatable && !path[i-1].get<wildcard>().repeatable,
+                         "A repeatable wildcard in a deposit path pattern cannot be adjacent to another wildcard");
+         }
+      } FC_CAPTURE_AND_RETHROW((path)) });
+   }
+   void operator()(const tap_opener& att) const {
+      if (att.release_amount.which() == asset_flow_limit::tag<share_type>::value)
+         FC_ASSERT(att.release_amount.get<share_type>() > 0, "Tap opener release amount must be positive");
+   }
+   void operator()(const attachment_connect_authority& att) const {
+      check_authority(att.connect_authority, "Attachment connect authority");
+   }
+};
+
+struct internal_requirement_checker {
+   using result_type = void;
+
+   void operator()(const immediate_flow_limit& req) const {
+      FC_ASSERT(req.limit > 0, "Immediate flow limit must be positive");
+   }
+   void operator()(const cumulative_flow_limit& req) const {
+      FC_ASSERT(req.limit > 0, "Cumulative flow limit must be positive");
+   }
+   void operator()(const periodic_flow_limit& req) const {
+      FC_ASSERT(req.limit > 0, "Periodic flow limit must be positive");
+   }
+   void operator()(const time_lock& req) const {
+      FC_ASSERT(!req.lock_unlock_times.empty(), "Time lock must specify at least one lock/unlock time");
+   }
+   void operator()(const minimum_tank_level& req) const {
+      FC_ASSERT(req.minimum_level > 0, "Minimum tank level must be positive");
+   }
+   void operator()(const review_requirement& req) const {
+      check_authority(req.reviewer, "Reviewer");
+   }
+   void operator()(const documentation_requirement&) const {}
+   void operator()(const delay_requirement& req) const {
+      if (req.veto_authority.valid())
+         check_authority(*req.veto_authority, "Veto authority");
+      FC_ASSERT(req.delay_period_sec > 0, "Delay period must be positive");
+   }
+   void operator()(const hash_lock& req) const {
+      fc::typelist::runtime::dispatch(hash_lock::hash_type::list(), req.hash.which(), [&req](auto t) {
+         using hash_type = typename decltype(t)::type;
+         FC_ASSERT(req.hash.get<hash_type>() != hash_type(), "Hash lock must not be null hash");
+      });
+      if (req.preimage_size)
+         FC_ASSERT(*req.preimage_size > 0, "Hash lock preimage size must be positive");
+   }
+   void operator()(const ticket_requirement& req) const {
+      FC_ASSERT(req.ticket_signer != public_key_type(), "Ticket signer must not be null public key");
+   }
+   void operator()(const exchange_requirement& req) const {
+      FC_ASSERT(req.tick_amount > 0, "Exchange requirement tick amount must be positive");
+      FC_ASSERT(req.release_per_tick > 0, "Exchange requirement release amount must be positive");
+   }
+};
+
+struct impacted_accounts_visitor {
+   flat_set<account_id_type>& accounts;
+
+   // Sink
+   void operator()(const sink& s) const {
+      if (s.is_type<account_id_type>()) accounts.insert(s.get<account_id_type>());
+   }
+
+   // Tank attachments
+   void operator()(const asset_flow_meter& afm) const { (*this)(afm.destination_sink); }
+   void operator()(const deposit_source_restrictor& dsr) const {
+      for (const auto& pattern : dsr.legal_deposit_paths)
+         for (const auto& element : pattern)
+            if (element.is_type<sink>()) (*this)(element.get<sink>());
+   }
+   void operator()(const tap_opener& top) const { (*this)(top.destination_sink); }
+   void operator()(const attachment_connect_authority& aca) const {
+      add_authority_accounts(accounts, aca.connect_authority);
+   }
+
+   // Tap requirements
+   void operator()(const immediate_flow_limit&) const {}
+   void operator()(const cumulative_flow_limit&) const {}
+   void operator()(const periodic_flow_limit&) const {}
+   void operator()(const time_lock&) const {}
+   void operator()(const minimum_tank_level&) const {}
+   void operator()(const review_requirement& rreq) const { add_authority_accounts(accounts, rreq.reviewer); }
+   void operator()(const documentation_requirement&) const {}
+   void operator()(const delay_requirement& dreq) const {
+      if (dreq.veto_authority.valid())
+         add_authority_accounts(accounts, *dreq.veto_authority);
+   }
+   void operator()(const hash_lock&) const {}
+   void operator()(const ticket_requirement&) const {}
+   void operator()(const exchange_requirement&) const {}
+
+   // Accessory containers
+   void operator()(const tap_requirement& treq) const {
+      fc::typelist::runtime::dispatch(tap_requirement::list(), treq.which(), [this, &treq](auto t) {
+         (*this)(treq.get<typename decltype(t)::type>());
+      });
+   }
+   void operator()(const tank_attachment& tatt) const {
+      fc::typelist::runtime::dispatch(tank_attachment::list(), tatt.which(), [this, &tatt](auto t) {
+         (*this)(tatt.get<typename decltype(t)::type>());
+      });
+   }
+
+   // Taps
+   void operator()(const tap& tap) const {
+      if (tap.open_authority.valid()) add_authority_accounts(accounts, *tap.open_authority);
+      if (tap.connect_authority.valid()) add_authority_accounts(accounts, *tap.connect_authority);
+      if (tap.connected_sink.valid()) (*this)(*tap.connected_sink);
+      for (const auto& req : tap.requirements) (*this)(req);
+   }
+};
+
 void tank_validator::validate_attachment(index_type attachment_id) {
    // Define a visitor that examines each attachment type
    struct {
@@ -56,52 +200,33 @@ void tank_validator::validate_attachment(index_type attachment_id) {
 
       // vvvv THE ACTUAL ATTACHMENT VALIDATORS vvvv
       void operator()(const asset_flow_meter& att) {
+         internal_attachment_checker()(att);
          check_sink_asset(att.destination_sink, att.asset_type);
          ++validator.attachment_counters[tank_attachment::tag<asset_flow_meter>::value];
       }
       void operator()(const deposit_source_restrictor& att) {
-         FC_ASSERT(att.legal_deposit_paths.size() > 0,
-                   "Deposit source restrictor must accept at least one deposit path");
+         internal_attachment_checker()(att);
          using path_pattern = deposit_source_restrictor::deposit_path_pattern;
          using wildcard_element = deposit_source_restrictor::wildcard_sink;
          std::for_each(att.legal_deposit_paths.begin(), att.legal_deposit_paths.end(),
                        [this](const path_pattern& path) { try {
-            FC_ASSERT(path.size() > 1,
-                      "Deposit path patterns must contain at least two elements for a source, and a destination");
-            if (!path.front().is_type<wildcard_element>())
-               FC_ASSERT(is_terminal_sink(path.front().get<sink>()),
-                         "Deposit path patterns must begin with a terminal sink or a wildcard");
             if (!path.back().is_type<wildcard_element>()) {
                const sink& final_sink = path.back().get<sink>();
-               FC_ASSERT(is_terminal_sink(final_sink),
-                         "Deposit path patterns must end with a terminal sink or a wildcard");
-               FC_ASSERT(final_sink.is_type<same_tank>() || final_sink.is_type<tank_id_type>(),
-                         "Deposit path patterns must end with the current tank or a wildcard");
                if (final_sink.is_type<tank_id_type>())
                   FC_ASSERT(validator.tank_id.valid() && final_sink.get<tank_id_type>() == *validator.tank_id,
                             "Deposit path patterns must end with the current tank or a wildcard");
-            }
-            if (path.size() < 3)
-               FC_ASSERT(!path.front().is_type<wildcard_element>(),
-                         "A single wildcard is not a valid deposit source restrictor pattern");
-            for (size_t i = 0; i < path.size(); ++i) {
-               using wildcard = deposit_source_restrictor::wildcard_sink;
-               if (i > 0 && path[i].is_type<wildcard>() && path[i-1].is_type<wildcard>())
-                  FC_ASSERT(!path[i].get<wildcard>().repeatable && !path[i-1].get<wildcard>().repeatable,
-                            "A repeatable wildcard in a deposit path pattern cannot be adjacent to another wildcard");
             }
          } FC_CAPTURE_AND_RETHROW((path)) });
          ++validator.attachment_counters[tank_attachment::tag<deposit_source_restrictor>::value];
       }
       void operator()(const tap_opener& att) {
+         internal_attachment_checker()(att);
          FC_ASSERT(validator.current_tank.taps.contains(att.tap_index), "Tap opener references nonexistent tap");
-         if (att.release_amount.which() == asset_flow_limit::tag<share_type>::value)
-            FC_ASSERT(att.release_amount.get<share_type>() > 0, "Tap opener release amount must be positive");
          check_sink_asset(att.destination_sink, att.asset_type);
          ++validator.attachment_counters[tank_attachment::tag<tap_opener>::value];
       }
       void operator()(const attachment_connect_authority& att) {
-         check_authority(att.connect_authority, "Attachment connect authority");
+         internal_attachment_checker()(att);
          FC_ASSERT(validator.current_tank.attachments.contains(att.attachment_id),
                    "Attachment connect authority references nonexistent attachment");
          const tank_attachment& attachment = validator.current_tank.attachments.at(att.attachment_id);
@@ -155,58 +280,50 @@ void tank_validator::validate_tap_requirement(index_type tap_id, index_type requ
 
       // vvvv THE ACTUAL TAP REQUIREMENT VALIDATORS vvvv
       void operator()(const immediate_flow_limit& req) {
-         FC_ASSERT(req.limit > 0, "Immediate flow limit must be positive");
+         internal_requirement_checker()(req);
          ++validator.requirement_counters[tap_requirement::tag<immediate_flow_limit>::value];
       }
       void operator()(const cumulative_flow_limit& req) {
-         FC_ASSERT(req.limit > 0, "Cumulative flow limit must be positive");
+         internal_requirement_checker()(req);
          check_meter(req.meter_id, "Cumulative flow limit", validator.current_tank.asset_type);
          ++validator.requirement_counters[tap_requirement::tag<cumulative_flow_limit>::value];
       }
       void operator()(const periodic_flow_limit& req) {
-         FC_ASSERT(req.limit > 0, "Periodic flow limit must be positive");
+         internal_requirement_checker()(req);
          check_meter(req.meter_id, "Periodic flow limit", validator.current_tank.asset_type);
          ++validator.requirement_counters[tap_requirement::tag<periodic_flow_limit>::value];
       }
       void operator()(const time_lock& req) {
-         FC_ASSERT(!req.lock_unlock_times.empty(), "Time lock must specify at least one lock/unlock time");
+         internal_requirement_checker()(req);
          ++validator.requirement_counters[tap_requirement::tag<time_lock>::value];
       }
       void operator()(const minimum_tank_level& req) {
-         FC_ASSERT(req.minimum_level > 0, "Minimum tank level must be positive");
+         internal_requirement_checker()(req);
          ++validator.requirement_counters[tap_requirement::tag<minimum_tank_level>::value];
       }
       void operator()(const review_requirement& req) {
-         check_authority(req.reviewer, "Reviewer");
+         internal_requirement_checker()(req);
          ++validator.requirement_counters[tap_requirement::tag<review_requirement>::value];
       }
-      void operator()(const documentation_requirement&) {
-         /* no checks */
+      void operator()(const documentation_requirement& req) {
+         internal_requirement_checker()(req);
          ++validator.requirement_counters[tap_requirement::tag<documentation_requirement>::value];
       }
       void operator()(const delay_requirement& req) {
-         if (req.veto_authority.valid())
-            check_authority(*req.veto_authority, "Veto authority");
-         FC_ASSERT(req.delay_period_sec > 0, "Delay period must be positive");
+         internal_requirement_checker()(req);
          ++validator.requirement_counters[tap_requirement::tag<delay_requirement>::value];
       }
       void operator()(const hash_lock& req) {
-         fc::typelist::runtime::dispatch(hash_lock::hash_type::list(), req.hash.which(), [&req](auto t) {
-            using hash_type = typename decltype(t)::type;
-            FC_ASSERT(req.hash.get<hash_type>() != hash_type(), "Hash lock must not be null hash");
-         });
-         if (req.preimage_size)
-            FC_ASSERT(*req.preimage_size > 0, "Hash lock preimage size must be positive");
+         internal_requirement_checker()(req);
          ++validator.requirement_counters[tap_requirement::tag<hash_lock>::value];
       }
       void operator()(const ticket_requirement& req) {
-         FC_ASSERT(req.ticket_signer != public_key_type(), "Ticket signer must not be null public key");
+         internal_requirement_checker()(req);
          ++validator.requirement_counters[tap_requirement::tag<ticket_requirement>::value];
       }
       void operator()(const exchange_requirement& req) {
          check_meter(req.meter_id, "Exchange requirement");
-         FC_ASSERT(req.tick_amount > 0, "Exchange requirement tick amount must be positive");
-         FC_ASSERT(req.release_per_tick > 0, "Exchange requirement release amount must be positive");
+         internal_requirement_checker()(req);
          ++validator.requirement_counters[tap_requirement::tag<exchange_requirement>::value];
       }
       // ^^^^ THE ACTUAL TAP REQUIREMENT VALIDATORS ^^^^
@@ -299,66 +416,19 @@ void tank_validator::check_tap_connection(index_type tap_id) const {
    }
 }
 
-void tank_validator::get_referenced_accounts(flat_set<account_id_type> &accounts) const {
-   struct {
-      flat_set<account_id_type>& accounts;
+void tank_validator::get_referenced_accounts(flat_set<account_id_type>& accounts) const {
+   for (const auto& tap_pair : current_tank.taps) get_referenced_accounts(accounts, tap_pair.second);
+   for (const auto& att_pair : current_tank.attachments) get_referenced_accounts(accounts, att_pair.second);
+}
 
-      // Sink
-      void operator()(const sink& s) const {
-         if (s.is_type<account_id_type>()) accounts.insert(s.get<account_id_type>());
-      }
+void tank_validator::get_referenced_accounts(flat_set<account_id_type>& accounts, const tap& tap) {
+   impacted_accounts_visitor check{accounts};
+   check(tap);
+}
 
-      // Tank attachments
-      void operator()(const asset_flow_meter& afm) const { (*this)(afm.destination_sink); }
-      void operator()(const deposit_source_restrictor& dsr) const {
-         for (const auto& pattern : dsr.legal_deposit_paths)
-            for (const auto& element : pattern)
-               if (element.is_type<sink>()) (*this)(element.get<sink>());
-      }
-      void operator()(const tap_opener& top) const { (*this)(top.destination_sink); }
-      void operator()(const attachment_connect_authority& aca) const {
-         add_authority_accounts(accounts, aca.connect_authority);
-      }
-
-      // Tap requirements
-      void operator()(const immediate_flow_limit&) const {}
-      void operator()(const cumulative_flow_limit&) const {}
-      void operator()(const periodic_flow_limit&) const {}
-      void operator()(const time_lock&) const {}
-      void operator()(const minimum_tank_level&) const {}
-      void operator()(const review_requirement& rreq) const { add_authority_accounts(accounts, rreq.reviewer); }
-      void operator()(const documentation_requirement&) const {}
-      void operator()(const delay_requirement& dreq) const {
-         if (dreq.veto_authority.valid())
-            add_authority_accounts(accounts, *dreq.veto_authority);
-      }
-      void operator()(const hash_lock&) const {}
-      void operator()(const ticket_requirement&) const {}
-      void operator()(const exchange_requirement&) const {}
-
-      // Accessory containers
-      void operator()(const tap_requirement& treq) const {
-         fc::typelist::runtime::dispatch(tap_requirement::list(), treq.which(), [this, &treq](auto t) {
-            (*this)(treq.get<typename decltype(t)::type>());
-         });
-      }
-      void operator()(const tank_attachment& tatt) const {
-         fc::typelist::runtime::dispatch(tank_attachment::list(), tatt.which(), [this, &tatt](auto t) {
-            (*this)(tatt.get<typename decltype(t)::type>());
-         });
-      }
-   } check_accessory{accounts};
-
-   for (const auto& tap_pair : current_tank.taps) {
-      const auto& tap = tap_pair.second;
-      if (tap.open_authority.valid()) add_authority_accounts(accounts, *tap.open_authority);
-      if (tap.connect_authority.valid()) add_authority_accounts(accounts, *tap.connect_authority);
-      if (tap.connected_sink.valid()) check_accessory(*tap.connected_sink);
-      for (const auto& req : tap.requirements)
-         check_accessory(req);
-   }
-   for (const auto& att_pair : current_tank.attachments)
-      check_accessory(att_pair.second);
+void tank_validator::get_referenced_accounts(flat_set<account_id_type>& accounts, const tank_attachment& att) {
+   impacted_accounts_visitor check{accounts};
+   check(att);
 }
 
 void tank_validator::validate_tap(index_type tap_id) {
@@ -380,11 +450,7 @@ void tank_validator::validate_tap(index_type tap_id) {
 
 void tank_validator::validate_emergency_tap() {
    FC_ASSERT(current_tank.taps.contains(0), "Emergency tap does not exist");
-   const auto& tap = current_tank.taps.at(0);
-   FC_ASSERT(tap.requirements.empty(), "Emergency tap must have no tap requirements");
-   FC_ASSERT(tap.open_authority.valid(), "Emergency tap must specify an open authority");
-   FC_ASSERT(tap.connect_authority.valid(), "Emergency tap must specify a connect authority");
-   FC_ASSERT(tap.destructor_tap == true, "Emergency tap must be a destructor tap");
+   validate_emergency_tap(current_tank.taps.at(0));
 }
 
 void tank_validator::validate_tank() {
@@ -397,6 +463,29 @@ void tank_validator::validate_tank() {
    for (const auto& tap_pair : current_tank.taps) try {
       validate_tap(tap_pair.first);
    } FC_CAPTURE_AND_RETHROW((tap_pair.first))
+}
+
+void tank_validator::validate_attachment(const tank_attachment &att) {
+   internal_attachment_checker checker;
+   att.visit(checker);
+}
+
+void tank_validator::validate_tap_requirement(const tap_requirement &req) {
+   internal_requirement_checker checker;
+   req.visit(checker);
+}
+
+void tank_validator::validate_tap(const tap& tap) {
+   FC_ASSERT(tap.connected_sink.valid() || tap.connect_authority.valid(),
+             "Tap must be connected, or specify a connect authority");
+   for (const auto& req : tap.requirements) validate_tap_requirement(req);
+}
+
+void tank_validator::validate_emergency_tap(const tap& etap) {
+   FC_ASSERT(etap.requirements.empty(), "Emergency tap must have no tap requirements");
+   FC_ASSERT(etap.open_authority.valid(), "Emergency tap must specify an open authority");
+   FC_ASSERT(etap.connect_authority.valid(), "Emergency tap must specify a connect authority");
+   FC_ASSERT(etap.destructor_tap == true, "Emergency tap must be a destructor tap");
 }
 
 } } } // namespace graphene::protocol::tnt

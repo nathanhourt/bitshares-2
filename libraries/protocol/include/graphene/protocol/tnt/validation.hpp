@@ -74,8 +74,21 @@ public:
    /// @brief If the specified tap is connected, check that its connection is valid
    void check_tap_connection(index_type tap_id) const;
 
-   /// Add every account referenced by this tank_schematic to the set
+   /// @brief Stateless/internal checks only on a particular tank attachment
+   static void validate_attachment(const tank_attachment& att);
+   /// @brief Stateless/internal checks only on a particular tap requirement
+   static void validate_tap_requirement(const tap_requirement& req);
+   /// @brief Stateless/internal checks only on a particular tap
+   static void validate_tap(const tap& tap);
+   /// @brief Stateless/internal emergency tap checks on a particular tap
+   static void validate_emergency_tap(const tap& etap);
+
+   /// @brief Add every account referenced by this tank_schematic to the set
    void get_referenced_accounts(flat_set<account_id_type>& accounts) const;
+   /// @brief Add referenced accounts from a particular tap to the provided set
+   static void get_referenced_accounts(flat_set<account_id_type>& accounts, const tap& tap);
+   /// @brief Add referenced accounts from a particular tank attachment to the provided set
+   static void get_referenced_accounts(flat_set<account_id_type>& accounts, const tank_attachment& att);
 
    /// Get counts of each tank_attachment type on the schematic (these are tallied during validation)
    const attachment_counter_type& get_attachment_counts() const { return attachment_counters; }

@@ -49,6 +49,47 @@ struct tank_create_operation : public base_operation {
    /// Attachments that will be attached to the tank
    vector<tnt::tank_attachment> attachments;
 
+   extensions_type extensions;
+
+   account_id_type fee_payer() const { return payer; }
+   share_type calculate_fee(const fee_parameters_type& params) const;
+   void validate() const;
+   void get_impacted_accounts(flat_set<account_id_type>& impacted) const;
+};
+
+struct tank_update_operation : public base_operation {
+   struct fee_parameters_type {
+      uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
+      uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 10;
+   };
+
+   /// Fee to pay for the update operation
+   asset fee;
+   /// Account that pays for the fee and deposit
+   account_id_type payer;
+   /// Authority required to update the tank (same as emergency tap open authority)
+   authority update_authority;
+   /// ID of the tank to update
+   tank_id_type tank_to_update;
+   /// Change in deposit amount on tank; credited or debited to payer
+   share_type deposit_delta;
+
+   /// IDs of taps to remove
+   flat_set<tnt::index_type> taps_to_remove;
+   /// Map of ID-to-new-value for taps to replace
+   flat_map<tnt::index_type, tnt::tap> taps_to_replace;
+   /// List of new taps to add; these will be assigned new IDs consecutively
+   vector<tnt::tap> taps_to_add;
+
+   /// IDs of attachments to remove
+   vector<tnt::index_type> attachments_to_remove;
+   /// Map of ID-to-new-value for attachments to replace
+   flat_map<tnt::index_type, tnt::tank_attachment> attachments_to_replace;
+   /// List of new attachments to add; these will be assigned new IDs consecutively
+   vector<tnt::tank_attachment> attachments_to_add;
+
+   extensions_type extensions;
+
    account_id_type fee_payer() const { return payer; }
    share_type calculate_fee(const fee_parameters_type& params) const;
    void validate() const;
@@ -57,6 +98,11 @@ struct tank_create_operation : public base_operation {
 
 } } // namespace graphene::protocol
 
-FC_REFLECT(graphene::protocol::tank_create_operation::fee_parameters_type, (base_fee))
+FC_REFLECT(graphene::protocol::tank_create_operation::fee_parameters_type, (base_fee)(price_per_byte))
 FC_REFLECT(graphene::protocol::tank_create_operation,
-           (fee)(payer)(deposit_amount)(contained_asset)(taps)(attachments))
+           (fee)(payer)(deposit_amount)(contained_asset)(taps)(attachments)(extensions))
+FC_REFLECT(graphene::protocol::tank_update_operation::fee_parameters_type, (base_fee)(price_per_byte))
+FC_REFLECT(graphene::protocol::tank_update_operation,
+           (fee)(payer)(update_authority)(tank_to_update)(deposit_delta)
+           (taps_to_remove)(taps_to_replace)(taps_to_add)
+           (attachments_to_remove)(attachments_to_replace)(attachments_to_add)(extensions))

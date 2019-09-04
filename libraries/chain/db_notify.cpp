@@ -309,6 +309,10 @@ struct get_impacted_account_visitor
    {
       op.get_impacted_accounts( _impacted );
    }
+   void operator()( const tank_update_operation& op )
+   {
+      op.get_impacted_accounts( _impacted );
+   }
 };
 
 } // namespace detail
