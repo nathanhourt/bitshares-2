@@ -30,7 +30,6 @@ namespace graphene { namespace protocol { namespace tnt {
 
 void check_authority(const authority& auth, const string& name_for_errors) {
    FC_ASSERT(!auth.is_impossible(), + name_for_errors + " must not be impossible authority");
-   FC_ASSERT(auth.weight_threshold > 0, + name_for_errors + " must not be trivial authority");
    FC_ASSERT(!(auth == authority::null_authority()), + name_for_errors + " must not be null authority");
 }
 
@@ -221,13 +220,13 @@ void tank_validator::validate_attachment(index_type attachment_id) {
       }
       void operator()(const tap_opener& att) {
          internal_attachment_checker()(att);
-         FC_ASSERT(validator.current_tank.taps.contains(att.tap_index), "Tap opener references nonexistent tap");
+         FC_ASSERT(validator.current_tank.taps.count(att.tap_index) > 0, "Tap opener references nonexistent tap");
          check_sink_asset(att.destination_sink, att.asset_type);
          ++validator.attachment_counters[tank_attachment::tag<tap_opener>::value];
       }
       void operator()(const attachment_connect_authority& att) {
          internal_attachment_checker()(att);
-         FC_ASSERT(validator.current_tank.attachments.contains(att.attachment_id),
+         FC_ASSERT(validator.current_tank.attachments.count(att.attachment_id) > 0,
                    "Attachment connect authority references nonexistent attachment");
          const tank_attachment& attachment = validator.current_tank.attachments.at(att.attachment_id);
          fc::typelist::runtime::dispatch(tank_attachment::list(), attachment.which(), [&attachment](auto t) {
@@ -240,7 +239,7 @@ void tank_validator::validate_attachment(index_type attachment_id) {
    } visitor{*this};
 
    // Fetch attachment and check for errors while fetching
-   FC_ASSERT(current_tank.attachments.contains(attachment_id), "Specified tank attachment does not exist; ID: ${ID}",
+   FC_ASSERT(current_tank.attachments.count(attachment_id) > 0, "Specified tank attachment does not exist; ID: ${ID}",
              ("ID", attachment_id));
    CHECK_ATTACHMENT_RESULT();
    const auto& attachment = lookup_attachment(attachment_id_type{optional<tank_id_type>(), attachment_id});
@@ -330,7 +329,7 @@ void tank_validator::validate_tap_requirement(index_type tap_id, index_type requ
    } visitor{*this};
 
    // Fetch attachment and check for errors while fetching
-   FC_ASSERT(current_tank.taps.contains(tap_id), "Specified tap does not exist; ID: ${ID}",
+   FC_ASSERT(current_tank.taps.count(tap_id) > 0, "Specified tap does not exist; ID: ${ID}",
              ("ID", tap_id));
    FC_ASSERT(current_tank.taps.at(tap_id).requirements.size() > requirement_index,
              "Specified tap requirement does not exist; Tap: ${T}, Requirement: ${R}",
@@ -342,7 +341,7 @@ void tank_validator::validate_tap_requirement(index_type tap_id, index_type requ
 }
 
 void tank_validator::check_tap_connection(index_type tap_id) const {
-   FC_ASSERT(current_tank.taps.contains(tap_id), "Requested tap does not exist");
+   FC_ASSERT(current_tank.taps.count(tap_id) > 0, "Requested tap does not exist");
    const auto& tap = current_tank.taps.at(tap_id);
    // If tap is connected...
    if (tap.connected_sink.valid()) {
@@ -432,7 +431,7 @@ void tank_validator::get_referenced_accounts(flat_set<account_id_type>& accounts
 }
 
 void tank_validator::validate_tap(index_type tap_id) {
-   FC_ASSERT(current_tank.taps.contains(tap_id), "Requested tap does not exist");
+   FC_ASSERT(current_tank.taps.count(tap_id) > 0, "Requested tap does not exist");
    const auto& tap = current_tank.taps.at(tap_id);
    FC_ASSERT(tap.connected_sink.valid() || tap.connect_authority.valid(),
              "Tap must be connected, or specify a connect authority");
@@ -449,7 +448,7 @@ void tank_validator::validate_tap(index_type tap_id) {
 }
 
 void tank_validator::validate_emergency_tap() {
-   FC_ASSERT(current_tank.taps.contains(0), "Emergency tap does not exist");
+   FC_ASSERT(current_tank.taps.count(0) > 0, "Emergency tap does not exist");
    validate_emergency_tap(current_tank.taps.at(0));
 }
 
@@ -484,7 +483,10 @@ void tank_validator::validate_tap(const tap& tap) {
 void tank_validator::validate_emergency_tap(const tap& etap) {
    FC_ASSERT(etap.requirements.empty(), "Emergency tap must have no tap requirements");
    FC_ASSERT(etap.open_authority.valid(), "Emergency tap must specify an open authority");
+   FC_ASSERT(etap.open_authority->weight_threshold > 0, "Emergency tap open authority must not be trivial");
+   check_authority(*etap.open_authority, "Emergency tap open authority");
    FC_ASSERT(etap.connect_authority.valid(), "Emergency tap must specify a connect authority");
+   check_authority(*etap.connect_authority, "Emergency tap connect authority");
    FC_ASSERT(etap.destructor_tap == true, "Emergency tap must be a destructor tap");
 }
 

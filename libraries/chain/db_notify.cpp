@@ -313,6 +313,11 @@ struct get_impacted_account_visitor
    {
       op.get_impacted_accounts( _impacted );
    }
+   void operator()( const tank_delete_operation& op )
+   {
+      _impacted.insert(op.payer);
+      add_authority_accounts(_impacted, op.delete_authority);
+   }
 };
 
 } // namespace detail

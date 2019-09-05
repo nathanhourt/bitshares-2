@@ -94,6 +94,27 @@ struct tank_update_operation : public base_operation {
    share_type calculate_fee(const fee_parameters_type& params) const;
    void validate() const;
    void get_impacted_accounts(flat_set<account_id_type>& impacted) const;
+   void get_required_authorities(vector<authority>& auths) const { auths.push_back(update_authority); }
+};
+
+struct tank_delete_operation : public base_operation {
+   struct fee_parameters_type {
+      uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
+   };
+
+   /// Fee to pay for the delete operation
+   asset fee;
+   /// Account that pays for the fee and receives the deposit
+   account_id_type payer;
+   /// Authority required to destroy the tank (same as emergency tap open authority)
+   authority delete_authority;
+   /// ID of the tank to delete
+   tank_id_type tank_to_delete;
+
+   account_id_type fee_payer() const { return payer; }
+   share_type calculate_fee(const fee_parameters_type& params) const { return params.base_fee; }
+   void validate() const;
+   void get_required_authorities(vector<authority>& auths) const { auths.push_back(delete_authority); }
 };
 
 } } // namespace graphene::protocol
@@ -106,3 +127,6 @@ FC_REFLECT(graphene::protocol::tank_update_operation,
            (fee)(payer)(update_authority)(tank_to_update)(deposit_delta)
            (taps_to_remove)(taps_to_replace)(taps_to_add)
            (attachments_to_remove)(attachments_to_replace)(attachments_to_add)(extensions))
+FC_REFLECT(graphene::protocol::tank_delete_operation::fee_parameters_type, (base_fee))
+FC_REFLECT(graphene::protocol::tank_delete_operation,
+           (fee)(payer)(delete_authority)(tank_to_delete))

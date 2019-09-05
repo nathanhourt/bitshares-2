@@ -51,8 +51,11 @@ share_type tank_update_operation::calculate_fee(const fee_parameters_type &param
 void tank_update_operation::validate() const {
    FC_ASSERT(fee.amount > 0, "Must have positive fee");
    FC_ASSERT(taps_to_remove.count(0) == 0, "Emergency tap cannot be removed; it can only be replaced");
+   FC_ASSERT(!update_authority.is_impossible(), "Update authority must not be impossible authority");
+   FC_ASSERT(!(update_authority == authority::null_authority()), "Update authority must not be null");
+   FC_ASSERT(update_authority.weight_threshold > 0, "Update authority must not be trivial");
 
-   if (taps_to_replace.contains(0)) tnt::tank_validator::validate_emergency_tap(taps_to_replace.at(0));
+   if (taps_to_replace.count(0) > 0) tnt::tank_validator::validate_emergency_tap(taps_to_replace.at(0));
    for (const auto& tap_pair : taps_to_replace) tnt::tank_validator::validate_tap(tap_pair.second);
    for (const auto& tap : taps_to_add) tnt::tank_validator::validate_tap(tap);
    for (const auto& att_pair : attachments_to_replace) tnt::tank_validator::validate_attachment(att_pair.second);
@@ -68,6 +71,13 @@ void tank_update_operation::get_impacted_accounts(flat_set<account_id_type>& imp
    for (const auto& tap : taps_to_add) Val::get_referenced_accounts(impacted, tap);
    for (const auto& att_pair : attachments_to_replace) Val::get_referenced_accounts(impacted, att_pair.second);
    for (const auto& att : attachments_to_add) Val::get_referenced_accounts(impacted, att);
+}
+
+void tank_delete_operation::validate() const {
+   FC_ASSERT(fee.amount > 0, "Must have positive fee");
+   FC_ASSERT(!delete_authority.is_impossible(), "Delete authority must not be impossible authority");
+   FC_ASSERT(!(delete_authority == authority::null_authority()), "Delete authority must not be null");
+   FC_ASSERT(delete_authority.weight_threshold > 0, "Delete authority must not be trivial");
 }
 
 } } // namespace graphene::protocol
