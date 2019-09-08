@@ -84,12 +84,7 @@ share_type tank_query_operation::calculate_fee(const fee_parameters_type& params
    return params.base_fee + (fc::raw::pack_size(*this) * params.price_per_byte);
 }
 
-void tank_query_operation::validate() const {
-   FC_ASSERT(fee.amount > 0, "Must have positive fee");
-   for (auto itr = required_authorities.begin(); itr != required_authorities.end(); ++itr)
-      FC_ASSERT(std::find(itr+1, required_authorities.end(), *itr) == required_authorities.end(),
-                "required_authorities must not contain duplicates");
-   FC_ASSERT(!queries.empty(), "Query list must not be empty");
+void validate_queries(const vector<tnt::tank_query_type>& queries, const tank_id_type& queried_tank) {
    for (const auto& query : queries) {
       query.visit([](const auto& q) {
          q.query_content.validate();
@@ -99,12 +94,45 @@ void tank_query_operation::validate() const {
       if (query.is_type<tnt::targeted_query<tnt::queries::redeem_ticket_to_open>>()) {
          const auto& targeted_query = query.get<tnt::targeted_query<tnt::queries::redeem_ticket_to_open>>();
          const auto& ticket = targeted_query.query_content.ticket;
-         FC_ASSERT(ticket.tank_ID == tank_to_query, "Ticket tank does not match target");
+         FC_ASSERT(ticket.tank_ID == queried_tank, "Ticket tank does not match target");
          FC_ASSERT(ticket.tap_ID == targeted_query.tap_ID, "Ticket tap does not match target");
          FC_ASSERT(ticket.requirement_index == targeted_query.requirement_index,
                    "Ticket requirement index does not match target");
       }
    }
+}
+
+void tank_query_operation::validate() const {
+   FC_ASSERT(fee.amount > 0, "Must have positive fee");
+   for (auto itr = required_authorities.begin(); itr != required_authorities.end(); ++itr)
+      FC_ASSERT(std::find(itr+1, required_authorities.end(), *itr) == required_authorities.end(),
+                "required_authorities must not contain duplicates");
+   FC_ASSERT(!queries.empty(), "Query list must not be empty");
+   validate_queries(queries, tank_to_query);
+}
+
+share_type tap_open_operation::calculate_fee(const fee_parameters_type& params) const {
+   return params.base_fee + (fc::raw::pack_size(*this) * params.price_per_byte);
+}
+
+void tap_open_operation::validate() const {
+   FC_ASSERT(fee.amount > 0, "Must have positive fee");
+   for (auto itr = required_authorities.begin(); itr != required_authorities.end(); ++itr)
+      FC_ASSERT(std::find(itr+1, required_authorities.end(), *itr) == required_authorities.end(),
+                "required_authorities must not contain duplicates");
+   FC_ASSERT(tap_to_open.tank_id.valid(), "Tank ID must be specified");
+   validate_queries(queries, *tap_to_open.tank_id);
+
+   if (release_amount.is_type<share_type>()) {
+      FC_ASSERT(release_amount.get<share_type>() >= 0, "Release amount must not be negative");
+      FC_ASSERT(release_amount.get<share_type>() > 0 || deposit_claimed.valid(),
+                "Release amount can only be zero if destroying the tank");
+   }
+   if (deposit_claimed.valid())
+      FC_ASSERT(release_amount.is_type<tnt::unlimited_flow>() || release_amount.get<share_type>() == 0,
+                "If destroying the tank, release amount must be unlimited or zero (if tank is empty)");
+
+   FC_ASSERT(tap_open_count >= 1, "Number of taps to open must be at least one");
 }
 
 } } // namespace graphene::protocol

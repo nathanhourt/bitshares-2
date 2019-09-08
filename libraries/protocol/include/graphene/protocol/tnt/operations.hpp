@@ -142,6 +142,38 @@ struct tank_query_operation : public base_operation {
    }
 };
 
+struct tap_open_operation : public base_operation {
+   struct fee_parameters_type {
+      uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
+      uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 10;
+   };
+
+   /// Fee to pay for the query operation
+   asset fee;
+   /// Account that pays for the fee
+   account_id_type payer;
+   /// Authorities required to authenticate the queries and open the tap
+   vector<authority> required_authorities;
+   /// Any queries which should be run prior to opening the tap
+   vector<tnt::tank_query_type> queries;
+   /// ID of the tap to open
+   tnt::tap_id_type tap_to_open;
+   /// Amount of asset to release through the tap
+   tnt::asset_flow_limit release_amount;
+   /// If specified, destroy the tank and claim the deposit. Requires tap be a destructor tap, flow_limit be
+   /// unlimited, and that the tank be empty when the operation finishes executing
+   optional<share_type> deposit_claimed;
+   /// Total number of taps opened by this operation (always at least 1, but maybe more due to tap_openers)
+   uint16_t tap_open_count = 0;
+
+   account_id_type fee_payer() const { return payer; }
+   share_type calculate_fee(const fee_parameters_type& params) const;
+   void validate() const;
+   void get_required_authorities(vector<authority>& auths) const {
+      auths.insert(auths.end(), required_authorities.begin(), required_authorities.end());
+   }
+};
+
 } } // namespace graphene::protocol
 
 FC_REFLECT(graphene::protocol::tank_create_operation::fee_parameters_type, (base_fee)(price_per_byte))
@@ -158,3 +190,6 @@ FC_REFLECT(graphene::protocol::tank_delete_operation,
 FC_REFLECT(graphene::protocol::tank_query_operation::fee_parameters_type, (base_fee)(price_per_byte))
 FC_REFLECT(graphene::protocol::tank_query_operation,
            (fee)(payer)(required_authorities)(tank_to_query)(queries))
+FC_REFLECT(graphene::protocol::tap_open_operation::fee_parameters_type, (base_fee)(price_per_byte))
+FC_REFLECT(graphene::protocol::tap_open_operation,
+           (fee)(payer)(required_authorities)(queries)(tap_to_open)(release_amount)(deposit_claimed)(tap_open_count))
