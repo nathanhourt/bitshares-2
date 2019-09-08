@@ -80,4 +80,31 @@ void tank_delete_operation::validate() const {
    FC_ASSERT(delete_authority.weight_threshold > 0, "Delete authority must not be trivial");
 }
 
+share_type tank_query_operation::calculate_fee(const fee_parameters_type& params) const {
+   return params.base_fee + (fc::raw::pack_size(*this) * params.price_per_byte);
+}
+
+void tank_query_operation::validate() const {
+   FC_ASSERT(fee.amount > 0, "Must have positive fee");
+   for (auto itr = required_authorities.begin(); itr != required_authorities.end(); ++itr)
+      FC_ASSERT(std::find(itr+1, required_authorities.end(), *itr) == required_authorities.end(),
+                "required_authorities must not contain duplicates");
+   FC_ASSERT(!queries.empty(), "Query list must not be empty");
+   for (const auto& query : queries) {
+      query.visit([](const auto& q) {
+         q.query_content.validate();
+      });
+
+      // Dirty, but I couldn't think of a simpler way to check this
+      if (query.is_type<tnt::targeted_query<tnt::queries::redeem_ticket_to_open>>()) {
+         const auto& targeted_query = query.get<tnt::targeted_query<tnt::queries::redeem_ticket_to_open>>();
+         const auto& ticket = targeted_query.query_content.ticket;
+         FC_ASSERT(ticket.tank_ID == tank_to_query, "Ticket tank does not match target");
+         FC_ASSERT(ticket.tap_ID == targeted_query.tap_ID, "Ticket tap does not match target");
+         FC_ASSERT(ticket.requirement_index == targeted_query.requirement_index,
+                   "Ticket requirement index does not match target");
+      }
+   }
+}
+
 } } // namespace graphene::protocol

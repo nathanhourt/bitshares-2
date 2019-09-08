@@ -250,18 +250,18 @@ struct minimum_tank_level {
 
 /// Requires account opening tap to provide a request that must be reviewed and accepted prior to opening tap
 struct review_requirement {
+   /// This type describes a request to open the tap
+   struct request_type {
+      /// Amount requested for release
+      asset_flow_limit request_amount;
+      /// Optional comment about request, max 150 chars
+      optional<string> request_comment;
+      /// Whether the request has been approved or not
+      bool approved = false;
+   };
    struct state_type {
-      /// This type describes a request for withdrawal waiting for review or for redemption
-      struct request_type {
-         /// Amount requested for release
-         fc::optional<asset_flow_limit> request_amount;
-         /// Optional comment about request, max 150 chars
-         optional<string> request_comment;
-         /// Whether the request has been approved or not
-         bool approved = false;
-      };
       /// Number of requests made so far; used to assign request IDs
-      index_type request_counter;
+      index_type request_counter = 0;
       /// Map of request ID to request
       flat_map<index_type, request_type> pending_requests;
    };
@@ -276,20 +276,20 @@ struct documentation_requirement {
 
 /// Requires account opening tap to create a request, then wait a specified delay before tap can be opened
 struct delay_requirement {
+   /// This type describes a request to open the tap
+   struct request_type {
+      /// When the request was made
+      time_point_sec delay_period_start;
+      /// Amount requested
+      asset_flow_limit request_amount;
+      /// Optional comment about request; max 150 chars
+      optional<string> request_comment;
+   };
    struct state_type {
-      /// This type describes a request for withdrawal waiting for its delay to pass
-      struct request_type {
-         /// When the request was made
-         optional<time_point_sec> delay_period_start;
-         /// Amount requested
-         optional<asset_flow_limit> request_amount;
-         /// Optional comment about request; max 150 chars
-         optional<string> request_comment;
-      };
       /// Number of requests made so far; used to assign request IDs
-      index_type request_counter;
+      index_type request_counter = 0;
       /// Maximum allowed number of outstanding requests; zero means no limit
-      index_type request_limit;
+      index_type request_limit = 0;
       /// Map of request ID to request
       flat_map<index_type, request_type> pending_requests;
    };
@@ -302,7 +302,7 @@ struct delay_requirement {
 };
 
 /// Requires an argument containing the preimage of a specified hash in order to open the tap
-struct hash_lock {
+struct hash_preimage_requirement {
    using hash_type = static_variant<fc::sha256, fc::sha1, fc::ripemd160, fc::hash160>;
    /// Specified hash value
    hash_type hash;
@@ -313,20 +313,22 @@ struct hash_lock {
 
 /// Requires account opening tap to provide a signed ticket authorizing the tap to be opened
 struct ticket_requirement {
+   /// The ticket that must be signed to unlock the tap
+   struct ticket_type {
+      /// ID of the tank containing the tap this ticket is for
+      tank_id_type tank_ID;
+      /// ID of the tap this ticket is for
+      index_type tap_ID;
+      /// Index of the ticket_requirement in the tap's requirement list
+      index_type requirement_index;
+      /// Maximum asset release authorized by this ticket
+      asset_flow_limit max_withdrawal;
+      /// Must be equal to tickets_consumed to be valid
+      index_type ticket_number;
+   };
    struct state_type {
-      /// The ticket that must be signed to unlock the tap
-      struct ticket_type {
-         /// ID of the tank containing the tap this ticket is for
-         tank_id_type tank_id;
-         /// Index of the tap this ticket is for
-         index_type tap_index;
-         /// Maximum asset release authorized by this ticket
-         asset_flow_limit max_withdrawal;
-         /// Must be equal to tickets_consumed to be valid
-         index_type ticket_number;
-      };
       /// Number of tickets that have been used to authorize a release of funds
-      index_type tickets_consumed;
+      index_type tickets_consumed = 0;
    };
    /// Key that must sign tickets to validate them
    public_key_type ticket_signer;
@@ -352,7 +354,8 @@ struct exchange_requirement {
 
 using tap_requirement = static_variant<immediate_flow_limit, cumulative_flow_limit, periodic_flow_limit, time_lock,
                                        minimum_tank_level, review_requirement, documentation_requirement,
-                                       delay_requirement, hash_lock, ticket_requirement, exchange_requirement>;
+                                       delay_requirement, hash_preimage_requirement, ticket_requirement,
+                                       exchange_requirement>;
 /// @}
 
 /// A structure on a tank which allows asset to be released from that tank by a particular authority with limits and
@@ -417,19 +420,19 @@ FC_REFLECT(graphene::protocol::tnt::periodic_flow_limit::state_type, (creation_d
 FC_REFLECT(graphene::protocol::tnt::periodic_flow_limit, (period_duration_sec)(meter_id)(limit))
 FC_REFLECT(graphene::protocol::tnt::time_lock, (start_locked)(lock_unlock_times))
 FC_REFLECT(graphene::protocol::tnt::minimum_tank_level, (minimum_level))
-FC_REFLECT(graphene::protocol::tnt::review_requirement::state_type::request_type,
+FC_REFLECT(graphene::protocol::tnt::review_requirement::request_type,
            (request_amount)(request_comment)(approved))
 FC_REFLECT(graphene::protocol::tnt::review_requirement::state_type, (request_counter)(pending_requests))
 FC_REFLECT(graphene::protocol::tnt::review_requirement, (reviewer))
 FC_REFLECT(graphene::protocol::tnt::documentation_requirement, )
-FC_REFLECT(graphene::protocol::tnt::delay_requirement::state_type::request_type,
+FC_REFLECT(graphene::protocol::tnt::delay_requirement::request_type,
            (delay_period_start)(request_amount)(request_comment))
 FC_REFLECT(graphene::protocol::tnt::delay_requirement::state_type,
            (request_counter)(request_limit)(pending_requests))
 FC_REFLECT(graphene::protocol::tnt::delay_requirement, (veto_authority)(delay_period_sec))
-FC_REFLECT(graphene::protocol::tnt::hash_lock, (hash)(preimage_size))
-FC_REFLECT(graphene::protocol::tnt::ticket_requirement::state_type::ticket_type,
-           (tank_id)(tap_index)(max_withdrawal)(ticket_number))
+FC_REFLECT(graphene::protocol::tnt::hash_preimage_requirement, (hash)(preimage_size))
+FC_REFLECT(graphene::protocol::tnt::ticket_requirement::ticket_type,
+           (tank_ID)(tap_ID)(requirement_index)(max_withdrawal)(ticket_number))
 FC_REFLECT(graphene::protocol::tnt::ticket_requirement::state_type, (tickets_consumed))
 FC_REFLECT(graphene::protocol::tnt::ticket_requirement, (ticket_signer))
 FC_REFLECT(graphene::protocol::tnt::exchange_requirement::state_type, (amount_released))
@@ -439,7 +442,7 @@ FC_REFLECT(graphene::protocol::tnt::tap,
 FC_REFLECT(graphene::protocol::tnt::tank_schematic,
            (taps)(tap_counter)(attachments)(attachment_counter)(asset_type))
 
-FC_REFLECT_TYPENAME(graphene::protocol::tnt::hash_lock::hash_type)
+FC_REFLECT_TYPENAME(graphene::protocol::tnt::hash_preimage_requirement::hash_type)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::sink)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::asset_flow_limit)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::deposit_source_restrictor::deposit_path_element)

@@ -24,6 +24,8 @@
 
 #include <graphene/protocol/tnt/validation.hpp>
 
+#include <fc/io/raw.hpp>
+
 #include "type_checks.hxx"
 
 namespace graphene { namespace protocol { namespace tnt {
@@ -34,8 +36,6 @@ void check_authority(const authority& auth, const string& name_for_errors) {
 }
 
 struct internal_attachment_checker {
-   using result_type = void;
-
    void operator()(const asset_flow_meter&) const {}
    void operator()(const deposit_source_restrictor& att) const {
       FC_ASSERT(att.legal_deposit_paths.size() > 0,
@@ -103,10 +103,12 @@ struct internal_requirement_checker {
          check_authority(*req.veto_authority, "Veto authority");
       FC_ASSERT(req.delay_period_sec > 0, "Delay period must be positive");
    }
-   void operator()(const hash_lock& req) const {
-      fc::typelist::runtime::dispatch(hash_lock::hash_type::list(), req.hash.which(), [&req](auto t) {
+   void operator()(const hash_preimage_requirement& req) const {
+      fc::typelist::runtime::dispatch(hash_preimage_requirement::hash_type::list(), req.hash.which(), [&req](auto t) {
          using hash_type = typename decltype(t)::type;
          FC_ASSERT(req.hash.get<hash_type>() != hash_type(), "Hash lock must not be null hash");
+         FC_ASSERT(req.hash.get<hash_type>() != hash_type::hash(vector<char>()),
+                   "Hash lock must not be hash of empty value");
       });
       if (req.preimage_size)
          FC_ASSERT(*req.preimage_size > 0, "Hash lock preimage size must be positive");
@@ -152,7 +154,7 @@ struct impacted_accounts_visitor {
       if (dreq.veto_authority.valid())
          add_authority_accounts(accounts, *dreq.veto_authority);
    }
-   void operator()(const hash_lock&) const {}
+   void operator()(const hash_preimage_requirement&) const {}
    void operator()(const ticket_requirement&) const {}
    void operator()(const exchange_requirement&) const {}
 
@@ -180,7 +182,6 @@ struct impacted_accounts_visitor {
 void tank_validator::validate_attachment(index_type attachment_id) {
    // Define a visitor that examines each attachment type
    struct {
-      using result_type = void;
       tank_validator& validator;
 
       // Helper function: Verify that the provided sink accepts the provided asset
@@ -256,7 +257,6 @@ void tank_validator::validate_attachment(index_type attachment_id) {
 void tank_validator::validate_tap_requirement(index_type tap_id, index_type requirement_index) {
    // Define a visitor that examines each attachment type
    struct {
-      using result_type = void;
       tank_validator& validator;
 
       // Helper function: Check that the provided attachment is a meter and, optionally, that it takes specified asset
@@ -312,9 +312,9 @@ void tank_validator::validate_tap_requirement(index_type tap_id, index_type requ
          internal_requirement_checker()(req);
          ++validator.requirement_counters[tap_requirement::tag<delay_requirement>::value];
       }
-      void operator()(const hash_lock& req) {
+      void operator()(const hash_preimage_requirement& req) {
          internal_requirement_checker()(req);
-         ++validator.requirement_counters[tap_requirement::tag<hash_lock>::value];
+         ++validator.requirement_counters[tap_requirement::tag<hash_preimage_requirement>::value];
       }
       void operator()(const ticket_requirement& req) {
          internal_requirement_checker()(req);
