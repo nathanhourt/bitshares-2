@@ -135,4 +135,16 @@ void tap_open_operation::validate() const {
    FC_ASSERT(tap_open_count >= 1, "Number of taps to open must be at least one");
 }
 
+void tap_connect_operation::validate() const {
+   FC_ASSERT(fee.amount > 0, "Must have positive fee");
+   FC_ASSERT(tap_to_connect.tank_id.valid(), "Tank ID must be specified");
+   if (clear_connect_authority)
+      FC_ASSERT(new_sink.valid(), "If clearing the connect authority, new sink must be specified");
+}
+
+void account_fund_sink_operation::validate() const {
+   FC_ASSERT(fee.amount > 0, "Must have positive fee");
+   FC_ASSERT(funding_amount.amount > 0, "Must have positive funding amount");
+}
+
 } } // namespace graphene::protocol

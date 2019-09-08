@@ -111,6 +111,8 @@ struct tank_delete_operation : public base_operation {
    /// ID of the tank to delete
    tank_id_type tank_to_delete;
 
+   extensions_type extensions;
+
    account_id_type fee_payer() const { return payer; }
    share_type calculate_fee(const fee_parameters_type& params) const { return params.base_fee; }
    void validate() const;
@@ -134,6 +136,8 @@ struct tank_query_operation : public base_operation {
    /// The queries to run
    vector<tnt::tank_query_type> queries;
 
+   extensions_type extensions;
+
    account_id_type fee_payer() const { return payer; }
    share_type calculate_fee(const fee_parameters_type& params) const;
    void validate() const;
@@ -150,7 +154,7 @@ struct tap_open_operation : public base_operation {
 
    /// Fee to pay for the query operation
    asset fee;
-   /// Account that pays for the fee
+   /// Account that pays for the fee, and receives any deposit claimed
    account_id_type payer;
    /// Authorities required to authenticate the queries and open the tap
    vector<authority> required_authorities;
@@ -166,12 +170,83 @@ struct tap_open_operation : public base_operation {
    /// Total number of taps opened by this operation (always at least 1, but maybe more due to tap_openers)
    uint16_t tap_open_count = 0;
 
+   extensions_type extensions;
+
    account_id_type fee_payer() const { return payer; }
    share_type calculate_fee(const fee_parameters_type& params) const;
    void validate() const;
    void get_required_authorities(vector<authority>& auths) const {
       auths.insert(auths.end(), required_authorities.begin(), required_authorities.end());
    }
+};
+
+struct tap_connect_operation : public base_operation {
+   struct fee_parameters_type {
+      uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
+   };
+
+   /// Fee to pay for the tap open operation
+   asset fee;
+   /// Account that pays for the fee
+   account_id_type payer;
+   /// Authority required to reconnect the tap (must match tap->connect_authority)
+   authority connect_authority;
+   /// ID of the tap to reconnect
+   tnt::tap_id_type tap_to_connect;
+   /// New destination for the tap; if null, tap will be disconnected
+   optional<tnt::sink> new_sink;
+   /// If true, new_sink must not be null, and the tap connect authority will be cleared after this operation and the
+   /// tap will no longer be able to be reconnected
+   /// WARNING: Set this to false unless you really know what you're doing
+   bool clear_connect_authority;
+
+   extensions_type extensions;
+
+   account_id_type fee_payer() const { return payer; }
+   share_type calculate_fee(const fee_parameters_type& params) const { return params.base_fee; }
+   void validate() const;
+   void get_required_authorities(vector<authority>& auths) const {
+      auths.push_back(connect_authority);
+   }
+};
+
+struct account_fund_sink_operation : public base_operation {
+   struct fee_parameters_type {
+      uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
+   };
+
+   /// Fee to pay for the fund operation
+   asset fee;
+   /// Account providing the funds and paying the fee
+   account_id_type funding_account;
+   /// Destination for the funds
+   tnt::sink funding_destination;
+   /// Amount of asset to deposit into the sink
+   asset funding_amount;
+
+   extensions_type extensions;
+
+   account_id_type fee_payer() const { return funding_account; }
+   share_type calculate_fee(const fee_parameters_type& params) const { return params.base_fee; }
+   void validate() const;
+};
+
+struct sink_fund_account_operation : public base_operation {
+   // Virtual operation -- does not charge a fee
+   struct fee_parameters_type {};
+
+   /// The account receiving the funds
+   account_id_type receiving_account;
+   /// The amount received
+   asset amount_received;
+   /// The path of sinks the asset took to arrive at the account
+   vector<tnt::sink> asset_path;
+
+   extensions_type extensions;
+
+   account_id_type fee_payer() const { return receiving_account; }
+   share_type calculate_fee(const fee_parameters_type&) const { return 0; }
+   void validate() const {}
 };
 
 } } // namespace graphene::protocol
@@ -186,10 +261,20 @@ FC_REFLECT(graphene::protocol::tank_update_operation,
            (attachments_to_remove)(attachments_to_replace)(attachments_to_add)(extensions))
 FC_REFLECT(graphene::protocol::tank_delete_operation::fee_parameters_type, (base_fee))
 FC_REFLECT(graphene::protocol::tank_delete_operation,
-           (fee)(payer)(delete_authority)(tank_to_delete))
+           (fee)(payer)(delete_authority)(tank_to_delete)(extensions))
 FC_REFLECT(graphene::protocol::tank_query_operation::fee_parameters_type, (base_fee)(price_per_byte))
 FC_REFLECT(graphene::protocol::tank_query_operation,
-           (fee)(payer)(required_authorities)(tank_to_query)(queries))
+           (fee)(payer)(required_authorities)(tank_to_query)(queries)(extensions))
 FC_REFLECT(graphene::protocol::tap_open_operation::fee_parameters_type, (base_fee)(price_per_byte))
 FC_REFLECT(graphene::protocol::tap_open_operation,
-           (fee)(payer)(required_authorities)(queries)(tap_to_open)(release_amount)(deposit_claimed)(tap_open_count))
+           (fee)(payer)(required_authorities)(queries)(tap_to_open)
+           (release_amount)(deposit_claimed)(tap_open_count)(extensions))
+FC_REFLECT(graphene::protocol::tap_connect_operation::fee_parameters_type, (base_fee))
+FC_REFLECT(graphene::protocol::tap_connect_operation,
+           (fee)(payer)(connect_authority)(tap_to_connect)(new_sink)(clear_connect_authority)(extensions))
+FC_REFLECT(graphene::protocol::account_fund_sink_operation::fee_parameters_type, (base_fee))
+FC_REFLECT(graphene::protocol::account_fund_sink_operation,
+           (fee)(funding_account)(funding_destination)(funding_amount)(extensions))
+FC_REFLECT(graphene::protocol::sink_fund_account_operation::fee_parameters_type,)
+FC_REFLECT(graphene::protocol::sink_fund_account_operation,
+           (receiving_account)(amount_received)(asset_path)(extensions))
