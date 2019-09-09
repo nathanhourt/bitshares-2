@@ -437,7 +437,11 @@ void tank_validator::validate_tap(index_type tap_id) {
              "Tap must be connected, or specify a connect authority");
 
    // Check tap requirements
+   uniqueness_checker<tap_requirement> is_unique;
    for (index_type i = 0; i < tap.requirements.size(); ++i) try {
+      FC_ASSERT(is_unique.check_tag(tap.requirements[i].which()),
+                "Tap requirements of type [${T}] must be unique per tap",
+                ("T", tap.requirements[i].content_typename()));
       validate_tap_requirement(tap_id, i);
    } FC_CAPTURE_AND_RETHROW((tap_id)(i))
 
@@ -455,7 +459,11 @@ void tank_validator::validate_emergency_tap() {
 void tank_validator::validate_tank() {
    // Validate attachments first because taps may connect to them, and we should be sure they're internally valid
    // by the time that happens.
+   uniqueness_checker<tank_attachment> is_unique;
    for (const auto& attachment_pair : current_tank.attachments) try {
+      FC_ASSERT(is_unique.check_tag(attachment_pair.second.which()),
+                "Tank attachments of type [${T}] must be unique per tank",
+                ("T", attachment_pair.second.content_typename()));
       validate_attachment(attachment_pair.first);
    } FC_CAPTURE_AND_RETHROW((attachment_pair.first))
    validate_emergency_tap();
@@ -477,7 +485,12 @@ void tank_validator::validate_tap_requirement(const tap_requirement &req) {
 void tank_validator::validate_tap(const tap& tap) {
    FC_ASSERT(tap.connected_sink.valid() || tap.connect_authority.valid(),
              "Tap must be connected, or specify a connect authority");
-   for (const auto& req : tap.requirements) validate_tap_requirement(req);
+   uniqueness_checker<tap_requirement> is_unique;
+   for (const auto& req : tap.requirements) {
+      FC_ASSERT(is_unique.check_tag(req.which()), "Tap requirements of type [${T}] must be unique per tap",
+                ("T", req.content_typename()));
+      validate_tap_requirement(req);
+   }
 }
 
 void tank_validator::validate_emergency_tap(const tap& etap) {

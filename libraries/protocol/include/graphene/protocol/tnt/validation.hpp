@@ -96,4 +96,29 @@ public:
    const requirement_counter_type& get_requirement_counts() const { return requirement_counters; }
 };
 
+/// A class to check if tank accessories are unique; can be instantiated for tank_attachment or tap_requirement
+template<typename AccessoryVariant>
+class uniqueness_checker {
+   using tag_type = typename AccessoryVariant::tag_type;
+   bool is_unique_accessory(tag_type tag) {
+      return fc::typelist::runtime::dispatch(typename AccessoryVariant::list(), tag, [](auto t) {
+         return decltype(t)::type::unique;
+      });
+   }
+   set<tag_type> tags_seen;
+
+public:
+   /// Checks if the provided tag should be unique and, if so, whether it has already been checked.
+   /// Returns true if the uniqueness constraint is upheld; false if it is violated
+   bool check_tag(tag_type tag) {
+      if (is_unique_accessory(tag) && tags_seen.count(tag))
+         return false;
+      tags_seen.insert(tag);
+      return true;
+   }
+
+   /// Reset the tags which have already been seen
+   void reset() { tags_seen.clear(); }
+};
+
 } } } // namespace graphene::protocol::tnt

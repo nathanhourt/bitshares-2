@@ -58,8 +58,17 @@ void tank_update_operation::validate() const {
    if (taps_to_replace.count(0) > 0) tnt::tank_validator::validate_emergency_tap(taps_to_replace.at(0));
    for (const auto& tap_pair : taps_to_replace) tnt::tank_validator::validate_tap(tap_pair.second);
    for (const auto& tap : taps_to_add) tnt::tank_validator::validate_tap(tap);
-   for (const auto& att_pair : attachments_to_replace) tnt::tank_validator::validate_attachment(att_pair.second);
-   for (const auto& att : attachments_to_add) tnt::tank_validator::validate_attachment(att);
+   tnt::uniqueness_checker<tnt::tank_attachment> is_unique;
+   for (const auto& att_pair : attachments_to_replace) {
+      FC_ASSERT(is_unique.check_tag(att_pair.second.which()),
+                "Tank attachments of type [${T}] must be unique per tank", ("T", att_pair.second.content_typename()));
+      tnt::tank_validator::validate_attachment(att_pair.second);
+   }
+   for (const auto& att : attachments_to_add) {
+      FC_ASSERT(is_unique.check_tag(att.which()), "Tank attachments of type [${T}] must be unique per tank",
+                ("T", att.content_typename()));
+      tnt::tank_validator::validate_attachment(att);
+   }
 }
 
 void tank_update_operation::get_impacted_accounts(flat_set<account_id_type>& impacted) const {
