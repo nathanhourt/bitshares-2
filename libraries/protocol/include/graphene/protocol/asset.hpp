@@ -263,6 +263,10 @@ namespace graphene { namespace protocol {
          operator asset_store() { asset_store result; source.to(result, amount); return result; }
       };
 
+      struct reflection : public fc::field_reflection<0, asset_store, asset, &asset_store::store_amount> {
+         static const asset& get(const asset_store& store) { return store.store_amount; }
+      };
+
    public:
       /// Create an asset_store containing a specified asset, without checking the source of the funds
       static asset_store unchecked_create(asset storage) {
@@ -319,12 +323,21 @@ namespace graphene { namespace protocol {
       void to_variant(variant& v) const;
       template<typename DS> void pack(DS& datastream) const;
       template<typename DS> void unpack(DS& datastream);
+
+      struct FC_internal_reflection {
+         using members = fc::typelist::list<reflection>;
+         template<typename V> static void visit(const V&) {
+            constexpr bool No = std::is_integral<V>{};
+            static_assert(No, "asset_store is not compatible with legacy FC reflection visitors");
+         }
+      };
    };
 
-} }
+} } // namespace graphene::protocol
 
 FC_REFLECT( graphene::protocol::asset, (amount)(asset_id) )
 FC_REFLECT( graphene::protocol::price, (base)(quote) )
+FC_COMPLETE_INTERNAL_REFLECTION(graphene::protocol::asset_store);
 
 #define GRAPHENE_PRICE_FEED_FIELDS (settlement_price)(maintenance_collateral_ratio)(maximum_short_squeeze_ratio) \
    (core_exchange_rate)
