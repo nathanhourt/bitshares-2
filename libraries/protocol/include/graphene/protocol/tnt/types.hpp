@@ -318,7 +318,7 @@ struct delay_requirement {
 /// Requires an argument containing the preimage of a specified hash in order to open the tap
 struct hash_preimage_requirement {
    constexpr static bool unique = false;
-   using hash_type = static_variant<fc::sha256, fc::sha1, fc::ripemd160, fc::hash160>;
+   using hash_type = static_variant<fc::sha256, fc::ripemd160, fc::hash160>;
    /// Specified hash value
    hash_type hash;
    /// Size of the preimage in bytes; a preimage of a different size will be rejected

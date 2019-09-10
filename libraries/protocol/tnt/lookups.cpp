@@ -91,7 +91,6 @@ attachment_sink_result lookup_utilities::get_attachment_sink(const attachment_id
 
 sink_asset lookup_utilities::get_sink_asset(const sink &s) const {
    struct {
-      using result_type = sink_asset;
       const lookup_utilities& utils;
       sink_asset operator()(const same_tank&) const { return utils.current_tank.asset_type; }
       sink_asset operator()(const account_id_type&) const { return any_asset(); }
