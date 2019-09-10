@@ -317,6 +317,18 @@ const int64_t scaled_precision_lut[19] =
    p10< 16 >::v, p10< 17 >::v, p10< 18 >::v
 };
 
+asset_store& asset_store::to(asset_store& destination, share_type amount) {
+   FC_ASSERT(amount <= store_amount.amount, "Cannot move more asset from the store than it contains");
+   if (!destination.empty())
+      FC_ASSERT(destination.store_amount.asset_id == store_amount.asset_id,
+                "Cannot move asset to asset_store containing a different type of asset");
+   else destination.store_amount.asset_id = store_amount.asset_id;
+   serialized = false;
+   destination.store_amount.amount += amount;
+   store_amount.amount -= amount;
+   return destination;
+}
+
 } } // graphene::protocol
 
 GRAPHENE_IMPLEMENT_EXTERNAL_SERIALIZATION( graphene::protocol::asset )

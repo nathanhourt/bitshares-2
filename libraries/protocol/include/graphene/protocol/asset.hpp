@@ -218,6 +218,109 @@ namespace graphene { namespace protocol {
       bool is_for( asset_id_type asset_id ) const;
    };
 
+   /// @class asset_store
+   /// @brief A class to store a quantity of "actual asset" as opposed to a mere amount that does not represent real
+   /// asset storage
+   ///
+   /// The @ref asset_store class provides an error-checking storage for a quantity of asset. This type is intended
+   /// to represent a real store of value, as opposed to a documentative note about an amount, which is provided by
+   /// the @ref asset type.
+   ///
+   /// Asset within an asset_store cannot be created or destroyed; it must be moved from store to store. If an
+   /// asset_store is destroyed or assigned to (move semantics only) when it still contains asset, an exception is
+   /// thrown. Asset can only be added to an asset_store by moving it from another asset_store.
+   ///
+   /// The exceptions to these rules are for serialization: if an asset_store is destroyed or assigned without having
+   /// been modified since it was serialized, no exception is thrown. Also, an asset_store can be created containing
+   /// an unchecked amount of asset using the static @ref unchecked_create method.
+   class asset_store {
+      asset store_amount;
+      mutable bool serialized = false;
+
+      void destroy() {
+         FC_ASSERT(store_amount.amount == 0 || serialized,
+                   "BUG: asset_store destroyed or overwritten with remaining asset inside!");
+         serialized = false;
+         store_amount.amount = 0;
+      }
+
+      /// Helper type for moving asset from one store to another. Either convert to an asset_store, or call @ref to
+      /// Intended use is like so:
+      /// destination = source.move(100);
+      /// source.move(100).to(dest);
+      /// This type should be used immediately upon receipt; it cannot be copied or moved.
+      class mover {
+         asset_store& source;
+         share_type amount;
+         mover(asset_store& source, share_type amount) : source(source), amount(amount) {}
+         mover(const mover&) = default; mover(mover&&) = default;
+         friend class asset_store;
+
+      public:
+         /// Move the asset to the specified destination
+         asset_store& to(asset_store& destination) { return source.to(destination, amount); }
+         /// Create a new asset_store and move the asset to it
+         operator asset_store() { asset_store result; source.to(result, amount); return result; }
+      };
+
+   public:
+      /// Create an asset_store containing a specified asset, without checking the source of the funds
+      static asset_store unchecked_create(asset storage) {
+         asset_store store;
+         store.store_amount = std::move(storage);
+         return store;
+      }
+      /// Empty an asset_store containing asset without a destination and without throwing an exception
+      void unchecked_destroy() {
+         store_amount.amount = 0;
+      }
+
+      asset_store() = default;
+      ~asset_store() { destroy(); }
+      asset_store(const asset_store&) = delete;
+      asset_store(asset_store&& other) {
+         store_amount = other.store_amount;
+         other.store_amount.amount = 0;
+      }
+      asset_store& operator=(const asset_store&) = delete;
+      asset_store& operator=(asset_store&& other) {
+         destroy();
+         store_amount = other.store_amount;
+         other.store_amount.amount = 0;
+         return *this;
+      }
+
+      /// Get the asset stored
+      const asset& stored_asset() const { return store_amount; }
+      /// Get the asset stored
+      operator asset() const { return store_amount; }
+      /// Get the amount of asset stored
+      const share_type& amount() const { return store_amount.amount; }
+      /// Get the type of asset stored
+      const asset_id_type& asset_type() const { return store_amount.asset_id; }
+      /// Check if the store is empty; true if so, false if not
+      bool empty() const { return store_amount.amount == 0; }
+
+      /// Move asset from this asset store to another one
+      mover move(share_type amount) { return mover{*this, amount}; }
+      /// Move the full amount in this asset_store to a destination store; returns a reference to destination
+      asset_store& to(asset_store& destination) { return to(destination, amount()); }
+      /// Move a specified amount from this asset_store to a destination store; returns a reference to destination
+      asset_store& to(asset_store& destination, share_type amount);
+
+      friend bool operator<(const asset_store& a, const asset_store& b) { return a.store_amount < b.store_amount; }
+      friend bool operator<=(const asset_store& a, const asset_store& b) { return a.store_amount <= b.store_amount; }
+      friend bool operator>(const asset_store& a, const asset_store& b) { return a.store_amount > b.store_amount; }
+      friend bool operator>=(const asset_store& a, const asset_store& b) { return a.store_amount >= b.store_amount; }
+      friend bool operator==(const asset_store& a, const asset_store& b) { return a.store_amount == b.store_amount; }
+      friend bool operator!=(const asset_store& a, const asset_store& b) { return a.store_amount != b.store_amount; }
+
+      void from_variant(const variant& v);
+      void to_variant(variant& v) const;
+      template<typename DS> void pack(DS& datastream) const;
+      template<typename DS> void unpack(DS& datastream);
+   };
+
 } }
 
 FC_REFLECT( graphene::protocol::asset, (amount)(asset_id) )
@@ -231,3 +334,32 @@ FC_REFLECT( graphene::protocol::price_feed, GRAPHENE_PRICE_FEED_FIELDS )
 GRAPHENE_DECLARE_EXTERNAL_SERIALIZATION( graphene::protocol::asset )
 GRAPHENE_DECLARE_EXTERNAL_SERIALIZATION( graphene::protocol::price )
 GRAPHENE_DECLARE_EXTERNAL_SERIALIZATION( graphene::protocol::price_feed )
+
+inline void graphene::protocol::asset_store::from_variant(const variant& v) {
+   serialized = false;
+   fc::from_variant(v, store_amount, FC_PACK_MAX_DEPTH);
+}
+inline void graphene::protocol::asset_store::to_variant(variant& v) const {
+   serialized = true;
+   fc::to_variant(store_amount, v, FC_PACK_MAX_DEPTH);
+}
+template<typename DS> void graphene::protocol::asset_store::pack(DS &datastream) const {
+   serialized = true;
+   fc::raw::pack(datastream, store_amount, FC_PACK_MAX_DEPTH);
+}
+template<typename DS> void graphene::protocol::asset_store::unpack(DS &datastream) {
+   serialized = false;
+   fc::raw::unpack(datastream, store_amount, FC_PACK_MAX_DEPTH);
+}
+
+namespace fc {
+inline void from_variant(const variant& v, graphene::protocol::asset_store& store, uint32_t = 1)
+{ store.from_variant(v); }
+inline void to_variant(const graphene::protocol::asset_store& store, variant& v, uint32_t = 1)
+{ store.to_variant(v); }
+namespace raw {
+template<typename DS> inline void pack(DS& ds, const graphene::protocol::asset_store& as, uint32_t = 1)
+{ as.pack(ds); }
+template<typename DS> inline void unpack(DS& ds, graphene::protocol::asset_store& as, uint32_t = 1)
+{ as.unpack(ds); }
+} } // namespace fc::raw

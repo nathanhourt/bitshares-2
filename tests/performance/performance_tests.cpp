@@ -48,6 +48,33 @@ using namespace graphene::chain;
 
 BOOST_FIXTURE_TEST_SUITE( performance_tests, database_fixture )
 
+BOOST_AUTO_TEST_CASE( asset_store_move_benchmark )
+{ try {
+   asset_store store_a = asset_store::unchecked_create(asset(1000));
+   asset_store store_b;
+   fc::time_point start, end;
+
+   start = fc::time_point::now();
+   for (auto i = 0; i < 500000; ++i) {
+      store_b = store_a.move(500);
+      store_b.move(500).to(store_a);
+   }
+   end = fc::time_point::now();
+   wlog("1M two-step moves took ${time}", ("time", end - start));
+
+   start = fc::time_point::now();
+   for (auto i = 0; i < 500000; ++i) {
+      store_a.to(store_b, 500);
+      store_b.to(store_a, 500);
+   }
+   end = fc::time_point::now();
+   wlog("1M one-step moves took ${time}", ("time", end - start));
+
+   BOOST_CHECK_EQUAL(store_a.amount().value, 1000);
+   BOOST_CHECK_EQUAL(store_b.amount().value, 0);
+   fc::raw::pack(store_a);
+} FC_LOG_AND_RETHROW() }
+
 BOOST_AUTO_TEST_CASE( sigcheck_benchmark )
 {
    fc::ecc::private_key nathan_key = fc::ecc::private_key::generate();
