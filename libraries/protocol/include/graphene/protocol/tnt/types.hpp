@@ -27,6 +27,7 @@
 #include <fc/reflect/reflect.hpp>
 #include <fc/static_variant.hpp>
 #include <fc/crypto/hash160.hpp>
+#include <fc/io/raw_fwd.hpp>
 
 #include <graphene/protocol/authority.hpp>
 #include <graphene/protocol/types.hpp>
@@ -60,6 +61,16 @@ namespace tnt {
 /// @{
 
 using index_type = uint16_t;
+namespace impl {
+template<typename...> using make_void = void;
+template<typename Accessory, typename = void> struct has_state_type_impl : std::false_type {};
+template<typename Accessory>
+struct has_state_type_impl<Accessory, make_void<typename Accessory::state_type>> : std::true_type {};
+template<typename Accessory>
+struct has_state_type { constexpr static bool value = has_state_type_impl<Accessory>::value; };
+template<typename Accessory>
+struct get_state_type { using type = typename Accessory::state_type; };
+}
 
 /// ID type for a tank attachment
 struct attachment_id_type {
@@ -206,6 +217,9 @@ struct attachment_connect_authority {
 
 using tank_attachment = static_variant<asset_flow_meter, deposit_source_restrictor, tap_opener,
                                        attachment_connect_authority>;
+using tank_attachment_state = static_variant<fc::typelist::transform<fc::typelist::filter<tank_attachment::list,
+                                                                                          impl::has_state_type>,
+                                                                     impl::get_state_type>>;
 /// @}
 
 /// @name Requirements
@@ -373,6 +387,9 @@ using tap_requirement = static_variant<immediate_flow_limit, cumulative_flow_lim
                                        minimum_tank_level, review_requirement, documentation_requirement,
                                        delay_requirement, hash_preimage_requirement, ticket_requirement,
                                        exchange_requirement>;
+using tap_requirement_state = static_variant<fc::typelist::transform<fc::typelist::filter<tap_requirement::list,
+                                                                                          impl::has_state_type>,
+                                                                     impl::get_state_type>>;
 /// @}
 
 /// A structure on a tank which allows asset to be released from that tank by a particular authority with limits and
@@ -418,6 +435,7 @@ struct tank_schematic {
 
 } } } // namespace graphene::protocol::tnt
 
+GRAPHENE_DECLARE_EXTERNAL_SERIALIZATION(graphene::protocol::tnt::tank_schematic)
 
 FC_REFLECT(graphene::protocol::tnt::attachment_id_type, (tank_id)(attachment_id))
 FC_REFLECT(graphene::protocol::tnt::tap_id_type, (tank_id)(tap_id))
@@ -441,7 +459,7 @@ FC_REFLECT(graphene::protocol::tnt::review_requirement::request_type,
            (request_amount)(request_comment)(approved))
 FC_REFLECT(graphene::protocol::tnt::review_requirement::state_type, (request_counter)(pending_requests))
 FC_REFLECT(graphene::protocol::tnt::review_requirement, (reviewer))
-FC_REFLECT(graphene::protocol::tnt::documentation_requirement, )
+FC_REFLECT(graphene::protocol::tnt::documentation_requirement,)
 FC_REFLECT(graphene::protocol::tnt::delay_requirement::request_type,
            (delay_period_start)(request_amount)(request_comment))
 FC_REFLECT(graphene::protocol::tnt::delay_requirement::state_type,

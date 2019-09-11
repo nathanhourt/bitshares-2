@@ -327,7 +327,7 @@ namespace graphene { namespace protocol {
       struct FC_internal_reflection {
          using members = fc::typelist::list<reflection>;
          template<typename V> static void visit(const V&) {
-            constexpr bool No = std::is_integral<V>{};
+            constexpr bool No = std::is_integral<V>::value;
             static_assert(No, "asset_store is not compatible with legacy FC reflection visitors");
          }
       };
@@ -337,7 +337,6 @@ namespace graphene { namespace protocol {
 
 FC_REFLECT( graphene::protocol::asset, (amount)(asset_id) )
 FC_REFLECT( graphene::protocol::price, (base)(quote) )
-FC_COMPLETE_INTERNAL_REFLECTION(graphene::protocol::asset_store);
 
 #define GRAPHENE_PRICE_FEED_FIELDS (settlement_price)(maintenance_collateral_ratio)(maximum_short_squeeze_ratio) \
    (core_exchange_rate)
@@ -376,3 +375,5 @@ template<typename DS> inline void pack(DS& ds, const graphene::protocol::asset_s
 template<typename DS> inline void unpack(DS& ds, graphene::protocol::asset_store& as, uint32_t = 1)
 { as.unpack(ds); }
 } } // namespace fc::raw
+
+FC_COMPLETE_INTERNAL_REFLECTION(graphene::protocol::asset_store);

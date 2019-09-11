@@ -54,6 +54,7 @@ add_library( graphene_chain
              custom_authority_evaluator.cpp
              buyback.cpp
 
+             tnt/object.cpp
              account_object.cpp
              asset_object.cpp
              fba_object.cpp

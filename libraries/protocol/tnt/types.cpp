@@ -22,9 +22,10 @@
  * THE SOFTWARE.
  */
 
-#include <fc/exception/exception.hpp>
-
 #include <graphene/protocol/tnt/operations.hpp>
+
+#include <fc/exception/exception.hpp>
+#include <fc/io/raw.hpp>
 
 namespace graphene { namespace protocol { namespace tnt {
 
@@ -229,3 +230,5 @@ bool sink_eq::operator()(const sink &left, const sink &right) const {
 }
 
 } } } // namespace graphene::protocol::tnt
+
+GRAPHENE_IMPLEMENT_EXTERNAL_SERIALIZATION(graphene::protocol::tnt::tank_schematic)

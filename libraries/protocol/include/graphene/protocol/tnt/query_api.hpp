@@ -293,7 +293,7 @@ using query_type_list = fc::typelist::list<queries::reset_meter, queries::reconn
                                            queries::reset_exchange_and_meter>;
 
 /// Typelist transformer to convert a query type to a targeted query
-struct to_targeted_query { template<typename Q> struct transform { using type = targeted_query<Q>; }; };
+template<typename Q> struct to_targeted_query { using type = targeted_query<Q>; };
 
 /// static_variant of all tank query types, with target information
 using tank_query_type = static_variant<fc::typelist::transform<query_type_list, to_targeted_query>>;
