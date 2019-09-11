@@ -261,6 +261,8 @@ namespace graphene { namespace protocol {
          asset_store& to(asset_store& destination) { return source.to(destination, amount); }
          /// Create a new asset_store and move the asset to it
          operator asset_store() { asset_store result; source.to(result, amount); return result; }
+         /// Destroy the asset without causing an exception
+         void unchecked_destroy() { asset_store(*this).unchecked_destroy(); }
       };
 
       struct reflection : public fc::field_reflection<0, asset_store, asset, &asset_store::store_amount> {
@@ -280,6 +282,7 @@ namespace graphene { namespace protocol {
       }
 
       asset_store() = default;
+      asset_store(asset_id_type type) { store_amount.asset_id = type; }
       ~asset_store() { destroy(); }
       asset_store(const asset_store&) = delete;
       asset_store(asset_store&& other) {
@@ -348,7 +351,7 @@ GRAPHENE_DECLARE_EXTERNAL_SERIALIZATION( graphene::protocol::price )
 GRAPHENE_DECLARE_EXTERNAL_SERIALIZATION( graphene::protocol::price_feed )
 
 inline void graphene::protocol::asset_store::from_variant(const variant& v) {
-   serialized = false;
+   serialized = true;
    fc::from_variant(v, store_amount, FC_PACK_MAX_DEPTH);
 }
 inline void graphene::protocol::asset_store::to_variant(variant& v) const {
@@ -360,7 +363,7 @@ template<typename DS> void graphene::protocol::asset_store::pack(DS &datastream)
    fc::raw::pack(datastream, store_amount, FC_PACK_MAX_DEPTH);
 }
 template<typename DS> void graphene::protocol::asset_store::unpack(DS &datastream) {
-   serialized = false;
+   serialized = true;
    fc::raw::unpack(datastream, store_amount, FC_PACK_MAX_DEPTH);
 }
 

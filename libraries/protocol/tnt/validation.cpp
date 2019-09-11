@@ -396,13 +396,14 @@ void tank_validator::check_tap_connection(index_type tap_id) const {
             if (dest_tank.is_type<const_ref<tank_schematic>>()) {
                const auto& dest_schema = dest_tank.get<const_ref<tank_schematic>>().get();
                // ...and see if it has a deposit_source_restrictor. If it does, check the deposit path is legal
-               if (const deposit_source_restrictor* restrictor = dest_schema.get_deposit_source_restrictor()) {
+               if (auto optional_ID = dest_schema.get_deposit_source_restrictor()) {
+                  const auto& restrictor = dest_schema.attachments.at(*optional_ID).get<deposit_source_restrictor>();
                   deposit_source_restrictor::deposit_path path;
                   // If we know the ID of the tank we're validating, that's the deposit origin. If not, oh well.
                   if (tank_id.valid())
                      path.origin = *tank_id;
                   path.sink_chain = std::move(real_sink_chain.sinks);
-                  auto matching_path = restrictor->get_matching_deposit_path(path, dest_tank_id);
+                  auto matching_path = restrictor.get_matching_deposit_path(path, dest_tank_id);
                   FC_ASSERT(matching_path.valid(), "Tap connects to destination tank, but is not accepted by "
                                                    "destination's deposit source restrictor");
                }
@@ -470,6 +471,7 @@ void tank_validator::validate_tank() {
    for (const auto& tap_pair : current_tank.taps) try {
       validate_tap(tap_pair.first);
    } FC_CAPTURE_AND_RETHROW((tap_pair.first))
+   has_validated = true;
 }
 
 void tank_validator::validate_attachment(const tank_attachment &att) {
@@ -501,6 +503,51 @@ void tank_validator::validate_emergency_tap(const tap& etap) {
    FC_ASSERT(etap.connect_authority.valid(), "Emergency tap must specify a connect authority");
    check_authority(*etap.connect_authority, "Emergency tap connect authority");
    FC_ASSERT(etap.destructor_tap == true, "Emergency tap must be a destructor tap");
+}
+
+share_type tank_validator::calculate_deposit(const parameters_type& parameters) const {
+   FC_ASSERT(has_validated, "Cannot calculate deposit before tank has been validated. Run validate_tank() first");
+   share_type total_deposit = parameters.tank_deposit;
+   // Map of tag-type to share-type
+   using map_type = flat_map<int64_t, uint64_t>;
+
+   // Define some tools to make a map of accessory-type-tag to deposit-amount. We'll use the same tooliing for both
+   // tank attachments and tap requirements, first for attachments, then again for requirements.
+   struct {
+      uint64_t default_deposit;
+      map_type deposit_overrides;
+      uint64_t stateful_premium;
+   } map_config;
+   map_type deposit_map;
+   auto make_map = [&map_config, &deposit_map](auto t) mutable {
+      auto tag = fc::typelist::first<typename decltype(t)::type>::value;
+      using Accessory = fc::typelist::last<typename decltype(t)::type>;
+
+      if (map_config.deposit_overrides.count(tag)) deposit_map[tag] = map_config.deposit_overrides.at(tag);
+      else deposit_map[tag] = map_config.default_deposit;
+
+      if (impl::has_state_type<Accessory>::value) deposit_map[tag] += map_config.stateful_premium;
+   };
+
+   // Set up the map for tank attachments
+   map_config.default_deposit = parameters.default_tank_attachment_deposit;
+   map_config.deposit_overrides = parameters.override_tank_attachment_deposits;
+   map_config.stateful_premium = parameters.stateful_accessory_deposit_premium;
+   fc::typelist::runtime::for_each(fc::typelist::index<tank_attachment::list>(), make_map);
+   // Tally up the total deposit for the attachments
+   for (auto tag_count_pair : attachment_counters)
+      total_deposit += deposit_map[tag_count_pair.first] * tag_count_pair.second;
+
+   // Reconfigure the map for tap requirements
+   deposit_map.clear();
+   map_config.default_deposit = parameters.default_tap_requirement_deposit;
+   map_config.deposit_overrides = parameters.override_tap_requirement_deposits;
+   fc::typelist::runtime::for_each(fc::typelist::index<tap_requirement::list>(), make_map);
+   // Tally up the total deposit for the requirements
+   for (auto tag_count_pair : requirement_counters)
+      total_deposit += deposit_map[tag_count_pair.first] * tag_count_pair.second;
+
+   return total_deposit;
 }
 
 } } } // namespace graphene::protocol::tnt

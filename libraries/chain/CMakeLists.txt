@@ -1,7 +1,7 @@
 
 set_source_files_properties( "${CMAKE_CURRENT_BINARY_DIR}/include/graphene/chain/hardfork.hpp" PROPERTIES GENERATED TRUE )
 
-file(GLOB HEADERS "include/graphene/chain/*.hpp")
+file(GLOB HEADERS "include/graphene/chain/*.hpp" "include/graphene/chain/tnt/*.hpp")
 
 if( GRAPHENE_DISABLE_UNITY_BUILD )
    set( GRAPHENE_DB_FILES
@@ -55,6 +55,7 @@ add_library( graphene_chain
              buyback.cpp
 
              tnt/object.cpp
+             tnt/evaluators.cpp
              account_object.cpp
              asset_object.cpp
              fba_object.cpp

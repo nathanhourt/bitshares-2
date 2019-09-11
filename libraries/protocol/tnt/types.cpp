@@ -39,11 +39,27 @@ tank_schematic tank_schematic::from_create_operation(const tank_create_operation
    return schema;
 }
 
-const deposit_source_restrictor* tank_schematic::get_deposit_source_restrictor() const {
+void tank_schematic::update_from_operation(const tank_update_operation& update_op) {
+   for (auto id : update_op.taps_to_remove)
+      taps.erase(id);
+   for (const auto& id_tap_pair : update_op.taps_to_replace)
+      taps[id_tap_pair.first] = id_tap_pair.second;
+   for (const tap& tap_to_add : update_op.taps_to_add)
+      taps[tap_counter++] = tap_to_add;
+
+   for (auto id : update_op.attachments_to_remove)
+      attachments.erase(id);
+   for (const auto& id_att_pair : update_op.attachments_to_replace)
+      attachments[id_att_pair.first] = id_att_pair.second;
+   for (const tank_attachment& att : update_op.attachments_to_add)
+      attachments[attachment_counter++] = att;
+}
+
+fc::optional<index_type> tank_schematic::get_deposit_source_restrictor() const {
    for (const auto& attachment_pair : attachments)
       if (attachment_pair.second.is_type<deposit_source_restrictor>())
-         return &attachment_pair.second.get<deposit_source_restrictor>();
-   return nullptr;
+         return attachment_pair.first;
+   return {};
 }
 
 fc::optional<size_t> deposit_source_restrictor::get_matching_deposit_path(const deposit_path &path,

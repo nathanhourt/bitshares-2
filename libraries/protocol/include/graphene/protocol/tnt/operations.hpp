@@ -77,6 +77,7 @@ struct tank_update_operation : public base_operation {
    /// IDs of taps to remove
    flat_set<tnt::index_type> taps_to_remove;
    /// Map of ID-to-new-value for taps to replace
+   /// Note that state data for all requirements of replaced taps will be deleted
    flat_map<tnt::index_type, tnt::tap> taps_to_replace;
    /// List of new taps to add; these will be assigned new IDs consecutively
    vector<tnt::tap> taps_to_add;
@@ -84,6 +85,7 @@ struct tank_update_operation : public base_operation {
    /// IDs of attachments to remove
    vector<tnt::index_type> attachments_to_remove;
    /// Map of ID-to-new-value for attachments to replace
+   /// Note that state data for replaced attachments will be deleted
    flat_map<tnt::index_type, tnt::tank_attachment> attachments_to_replace;
    /// List of new attachments to add; these will be assigned new IDs consecutively
    vector<tnt::tank_attachment> attachments_to_add;
@@ -110,6 +112,8 @@ struct tank_delete_operation : public base_operation {
    authority delete_authority;
    /// ID of the tank to delete
    tank_id_type tank_to_delete;
+   /// Amount of the deposit on the tank, to be refunded to payer
+   share_type deposit_claimed;
 
    extensions_type extensions;
 
@@ -261,7 +265,7 @@ FC_REFLECT(graphene::protocol::tank_update_operation,
            (attachments_to_remove)(attachments_to_replace)(attachments_to_add)(extensions))
 FC_REFLECT(graphene::protocol::tank_delete_operation::fee_parameters_type, (base_fee))
 FC_REFLECT(graphene::protocol::tank_delete_operation,
-           (fee)(payer)(delete_authority)(tank_to_delete)(extensions))
+           (fee)(payer)(delete_authority)(tank_to_delete)(deposit_claimed)(extensions))
 FC_REFLECT(graphene::protocol::tank_query_operation::fee_parameters_type, (base_fee)(price_per_byte))
 FC_REFLECT(graphene::protocol::tank_query_operation,
            (fee)(payer)(required_authorities)(tank_to_query)(queries)(extensions))

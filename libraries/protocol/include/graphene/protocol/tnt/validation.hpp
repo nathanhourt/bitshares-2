@@ -34,6 +34,7 @@ using requirement_counter_type = map<tap_requirement::tag_type, index_type>;
 class tank_validator : public lookup_utilities {
    const size_t max_sink_chain_length;
    const fc::optional<tank_id_type> tank_id;
+   bool has_validated = false;
 
    // Counters of tank accessories
    attachment_counter_type attachment_counters;
@@ -91,9 +92,19 @@ public:
    static void get_referenced_accounts(flat_set<account_id_type>& accounts, const tank_attachment& att);
 
    /// Get counts of each tank_attachment type on the schematic (these are tallied during validation)
-   const attachment_counter_type& get_attachment_counts() const { return attachment_counters; }
+   const attachment_counter_type& get_attachment_counts() const {
+      FC_ASSERT(has_validated,
+                "Cannot get attachment counts until tank has been validated. Run validate_tank() first");
+      return attachment_counters;
+   }
    /// Get counts of each tap_requirement type on the schematic (these are tallied during validation)
-   const requirement_counter_type& get_requirement_counts() const { return requirement_counters; }
+   const requirement_counter_type& get_requirement_counts() const {
+      FC_ASSERT(has_validated,
+                "Cannot get requirement counts until tank has been validated. Run validate_tank() first");
+      return requirement_counters;
+   }
+   /// Calculate the deposit required for this tank and all accessories
+   share_type calculate_deposit(const parameters_type& parameters) const;
 };
 
 /// A class to check if tank accessories are unique; can be instantiated for tank_attachment or tap_requirement

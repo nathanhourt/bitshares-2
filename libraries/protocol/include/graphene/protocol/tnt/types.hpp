@@ -29,6 +29,7 @@
 #include <fc/crypto/hash160.hpp>
 #include <fc/io/raw_fwd.hpp>
 
+#include <graphene/protocol/tnt/types_fwd.hpp>
 #include <graphene/protocol/authority.hpp>
 #include <graphene/protocol/types.hpp>
 
@@ -215,8 +216,6 @@ struct attachment_connect_authority {
    optional<sink> output_sink() const { return {}; }
 };
 
-using tank_attachment = static_variant<asset_flow_meter, deposit_source_restrictor, tap_opener,
-                                       attachment_connect_authority>;
 using tank_attachment_state = static_variant<fc::typelist::transform<fc::typelist::filter<tank_attachment::list,
                                                                                           impl::has_state_type>,
                                                                      impl::get_state_type>>;
@@ -383,10 +382,6 @@ struct exchange_requirement {
    share_type tick_amount;
 };
 
-using tap_requirement = static_variant<immediate_flow_limit, cumulative_flow_limit, periodic_flow_limit, time_lock,
-                                       minimum_tank_level, review_requirement, documentation_requirement,
-                                       delay_requirement, hash_preimage_requirement, ticket_requirement,
-                                       exchange_requirement>;
 using tap_requirement_state = static_variant<fc::typelist::transform<fc::typelist::filter<tap_requirement::list,
                                                                                           impl::has_state_type>,
                                                                      impl::get_state_type>>;
@@ -427,8 +422,8 @@ struct tank_schematic {
    /// Update from a tank_update_operation
    void update_from_operation(const tank_update_operation& update_op);
 
-   /// Returns the deposit_source_restrictor attachment, if one exists; nullptr otherwise
-   const deposit_source_restrictor* get_deposit_source_restrictor() const;
+   /// Returns the ID of the deposit_source_restrictor attachment, if one exists; null otherwise
+   fc::optional<index_type> get_deposit_source_restrictor() const;
 };
 
 /// @}

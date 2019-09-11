@@ -21,20 +21,41 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include <graphene/protocol/asset.hpp>
-#include <graphene/chain/tnt/object.hpp>
+#pragma once
 
-#include <fc/io/raw.hpp>
+#include <graphene/chain/evaluator.hpp>
+
+#include <graphene/protocol/tnt/operations.hpp>
 
 namespace graphene { namespace chain {
+class tank_object;
 
-void tank_object::clear_tap_state(tnt::index_type tap_ID) {
-   auto itr = requirement_states.lower_bound(std::make_pair(tap_ID, 0));
-   while (itr != requirement_states.end() && itr->first.first == tap_ID)
-      itr = requirement_states.erase(itr);
-}
+class tank_create_evaluator : public evaluator<tank_create_evaluator> {
+   using operation_type = tank_create_operation;
 
+   void_result do_evaluate(const operation_type& o);
+   object_id_type do_apply(const operation_type&);
+
+   tnt::tank_schematic new_tank;
+};
+
+class tank_update_evaluator : public evaluator<tank_update_evaluator> {
+   using operation_type = tank_update_operation;
+
+   void_result do_evaluate(const operation_type& o);
+   void_result do_apply(const operation_type& o);
+
+   const tank_object* old_tank;
+   tnt::tank_schematic updated_tank;
+};
+
+class tank_delete_evaluator : public evaluator<tank_delete_evaluator> {
+   using operation_type = tank_delete_operation;
+
+   void_result do_evaluate(const operation_type& o);
+   void_result do_apply(const operation_type& o);
+
+   const tank_object* old_tank;
+};
 
 } } // namespace graphene::chain
-
-GRAPHENE_IMPLEMENT_EXTERNAL_SERIALIZATION(graphene::chain::tank_object)

@@ -49,6 +49,8 @@ public:
    tnt::tank_schematic schematic;
    /// The balance of the tank
    asset_store balance;
+   /// The deposit being held for this tank
+   asset_store deposit;
 
    /// Storage of tank attachments' states
    map<tnt::index_type, tnt::tank_attachment_state> attachment_states;
@@ -56,6 +58,9 @@ public:
    map<pair<tnt::index_type, tnt::index_type>, tnt::tap_requirement_state> requirement_states;
    /// Cache of the ID of the tank's deposit_source_restrictor, if it has one
    optional<tnt::index_type> restrictor_ID;
+
+   /// Delete state for any/all requirements on the specified tap
+   void clear_tap_state(tnt::index_type tap_ID);
 };
 
 } } // namespace graphene::chain
