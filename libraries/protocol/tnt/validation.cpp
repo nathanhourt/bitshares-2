@@ -508,44 +508,33 @@ void tank_validator::validate_emergency_tap(const tap& etap) {
 share_type tank_validator::calculate_deposit(const parameters_type& parameters) const {
    FC_ASSERT(has_validated, "Cannot calculate deposit before tank has been validated. Run validate_tank() first");
    share_type total_deposit = parameters.tank_deposit;
-   // Map of tag-type to share-type
-   using map_type = flat_map<int64_t, uint64_t>;
+   auto attachment_to_accessory_map = TL::runtime::make_array<size_t>(
+               TL::filter_index_map<tank_accessory_list, tank_attachment_filter::filter>());
+   auto requirement_to_accessory_map = TL::runtime::make_array<size_t>(
+               TL::filter_index_map<tank_accessory_list, tap_requirement_filter::filter>());
 
-   // Define some tools to make a map of accessory-type-tag to deposit-amount. We'll use the same tooliing for both
-   // tank attachments and tap requirements, first for attachments, then again for requirements.
-   struct {
-      uint64_t default_deposit;
-      map_type deposit_overrides;
-      uint64_t stateful_premium;
-   } map_config;
-   map_type deposit_map;
-   auto make_map = [&map_config, &deposit_map](auto t) mutable {
-      auto tag = fc::typelist::first<typename decltype(t)::type>::value;
-      using Accessory = fc::typelist::last<typename decltype(t)::type>;
-
-      if (map_config.deposit_overrides.count(tag)) deposit_map[tag] = map_config.deposit_overrides.at(tag);
-      else deposit_map[tag] = map_config.default_deposit;
-
-      if (impl::has_state_type<Accessory>::value) deposit_map[tag] += map_config.stateful_premium;
+   // Helper to get the deposit for the supplied accessory type
+   // If the accessory type has a deposit override, the overridden value is returned. Otherwise, returns the supplied
+   // default deposit plus the stateful deposit premium if the accessory is stateful.
+   auto get_accessory_deposit = [&parameters](size_t type, share_type default_deposit) -> share_type {
+      static auto accessory_has_state_map =
+              TL::runtime::make_array<bool>(TL::transform<tank_accessory_list,
+                                                          TL::transformer_from_filter<impl::has_state_type>
+                                                            ::transformer>());
+      auto override_itr = parameters.override_deposits.find(type);
+      if (override_itr != parameters.override_deposits.end())
+         return override_itr->second;
+      return default_deposit + (parameters.stateful_accessory_deposit_premium * accessory_has_state_map[type]);
    };
 
-   // Set up the map for tank attachments
-   map_config.default_deposit = parameters.default_tank_attachment_deposit;
-   map_config.deposit_overrides = parameters.override_tank_attachment_deposits;
-   map_config.stateful_premium = parameters.stateful_accessory_deposit_premium;
-   fc::typelist::runtime::for_each(fc::typelist::index<tank_attachment::list>(), make_map);
-   // Tally up the total deposit for the attachments
+   // Add in deposits on tank attachments
    for (auto tag_count_pair : attachment_counters)
-      total_deposit += deposit_map[tag_count_pair.first] * tag_count_pair.second;
-
-   // Reconfigure the map for tap requirements
-   deposit_map.clear();
-   map_config.default_deposit = parameters.default_tap_requirement_deposit;
-   map_config.deposit_overrides = parameters.override_tap_requirement_deposits;
-   fc::typelist::runtime::for_each(fc::typelist::index<tap_requirement::list>(), make_map);
-   // Tally up the total deposit for the requirements
+      total_deposit += get_accessory_deposit(attachment_to_accessory_map[size_t(tag_count_pair.first)],
+                                             parameters.default_tank_attachment_deposit);
+   // Add in deposits on tap requirements
    for (auto tag_count_pair : requirement_counters)
-      total_deposit += deposit_map[tag_count_pair.first] * tag_count_pair.second;
+      total_deposit += get_accessory_deposit(requirement_to_accessory_map[size_t(tag_count_pair.first)],
+                                             parameters.default_tap_requirement_deposit);
 
    return total_deposit;
 }

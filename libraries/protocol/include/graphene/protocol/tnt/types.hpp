@@ -29,7 +29,7 @@
 #include <fc/crypto/hash160.hpp>
 #include <fc/io/raw_fwd.hpp>
 
-#include <graphene/protocol/tnt/types_fwd.hpp>
+#include <graphene/protocol/tnt/accessories_fwd.hpp>
 #include <graphene/protocol/authority.hpp>
 #include <graphene/protocol/types.hpp>
 
@@ -38,6 +38,8 @@ namespace graphene { namespace protocol {
 struct tank_create_operation;
 struct tank_update_operation;
 namespace tnt {
+namespace TL = fc::typelist;
+
 /// \defgroup TNT Tanks and Taps
 /// Tanks and Taps defines a modular, composable framework for financial smart contracts. The fundamental design is
 /// that asset can be held in containers called tanks, and can be released from those tanks by taps, which are
@@ -137,6 +139,7 @@ using asset_flow_limit = static_variant<unlimited_flow, share_type>;
 /// Receives asset and immediately releases it to a predetermined sink, maintaining a tally of the total amount that
 /// has flowed through
 struct asset_flow_meter {
+   constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
    constexpr static bool unique = false;
    struct state_type {
       /// The amount of asset that has flowed through the meter
@@ -154,6 +157,7 @@ struct asset_flow_meter {
 /// Contains several patterns for sources that may deposit to the tank, and rejects any deposit that comes via a path
 /// that does not match against any pattern
 struct deposit_source_restrictor {
+   constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
    constexpr static bool unique = true;
    /// This type defines a wildcard sink type, which matches against any sink(s)
    struct wildcard_sink {
@@ -190,6 +194,7 @@ struct deposit_source_restrictor {
 /// Receives asset and immediately releases it to a predetermined sink, scheduling a tap on the tank it is attached
 /// to to be opened once the received asset stops moving
 struct tap_opener {
+   constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
    constexpr static bool unique = false;
    /// Index of the tap to open (must be on the same tank as the opener)
    index_type tap_index;
@@ -206,6 +211,7 @@ struct tap_opener {
 
 /// Allows a specified authority to update the sink a specified tank attachment releases processed asset into
 struct attachment_connect_authority {
+   constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
    constexpr static bool unique = false;
    /// The authority that can reconnect the attachment
    authority connect_authority;
@@ -215,10 +221,6 @@ struct attachment_connect_authority {
    optional<asset_id_type> receives_asset() const { return {}; }
    optional<sink> output_sink() const { return {}; }
 };
-
-using tank_attachment_state = static_variant<fc::typelist::transform<fc::typelist::filter<tank_attachment::list,
-                                                                                          impl::has_state_type>,
-                                                                     impl::get_state_type>>;
 /// @}
 
 /// @name Requirements
@@ -228,12 +230,14 @@ using tank_attachment_state = static_variant<fc::typelist::transform<fc::typelis
 
 /// A flat limit on the amount that can be released in any given opening
 struct immediate_flow_limit {
+   constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = true;
    share_type limit;
 };
 
 /// A limit to the cumulative total that can be released through the tap in its lifetime
 struct cumulative_flow_limit {
+   constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = true;
    /// Meter tracking the cumulative flow through this tap
    attachment_id_type meter_id;
@@ -243,6 +247,7 @@ struct cumulative_flow_limit {
 
 /// A limit to the cumulative total that can be released through the tap within a given time period
 struct periodic_flow_limit {
+   constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = false;
    struct state_type {
       /// When the limit was created, and thus, when the first period began
@@ -258,6 +263,7 @@ struct periodic_flow_limit {
 
 /// Locks and unlocks the tap at specified times
 struct time_lock {
+   constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = true;
    /// If true, the tap is initially locked
    bool start_locked = false;
@@ -267,6 +273,7 @@ struct time_lock {
 
 /// Prevents tap from draining tank to below a specfied balance
 struct minimum_tank_level {
+   constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = true;
    /// Minimum tank balance
    share_type minimum_level;
@@ -274,6 +281,7 @@ struct minimum_tank_level {
 
 /// Requires account opening tap to provide a request that must be reviewed and accepted prior to opening tap
 struct review_requirement {
+   constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = true;
    /// This type describes a request to open the tap
    struct request_type {
@@ -296,12 +304,14 @@ struct review_requirement {
 
 /// Requires a non-empty documentation argument be provided when opening the tap
 struct documentation_requirement {
+   constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = true;
    /* no fields; if this requirement is present, evaluator requires a documentation argument to open tap */
 };
 
 /// Requires account opening tap to create a request, then wait a specified delay before tap can be opened
 struct delay_requirement {
+   constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = true;
    /// This type describes a request to open the tap
    struct request_type {
@@ -330,6 +340,7 @@ struct delay_requirement {
 
 /// Requires an argument containing the preimage of a specified hash in order to open the tap
 struct hash_preimage_requirement {
+   constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = false;
    using hash_type = static_variant<fc::sha256, fc::ripemd160, fc::hash160>;
    /// Specified hash value
@@ -341,6 +352,7 @@ struct hash_preimage_requirement {
 
 /// Requires account opening tap to provide a signed ticket authorizing the tap to be opened
 struct ticket_requirement {
+   constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = false;
    /// The ticket that must be signed to unlock the tap
    struct ticket_type {
@@ -369,6 +381,7 @@ struct ticket_requirement {
 /// Thus the releases come in "ticks" such that once the meter has received a full tick amount, the tap will release
 /// a tick amount.
 struct exchange_requirement {
+   constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = false;
    struct state_type {
       /// The amount of asset released so far
@@ -381,11 +394,15 @@ struct exchange_requirement {
    /// Amount of metered asset per tick
    share_type tick_amount;
 };
-
-using tap_requirement_state = static_variant<fc::typelist::transform<fc::typelist::filter<tap_requirement::list,
-                                                                                          impl::has_state_type>,
-                                                                     impl::get_state_type>>;
 /// @}
+
+using tank_attachment = static_variant<TL::filter<tank_accessory_list, tank_attachment_filter::filter>>;
+using tank_attachment_state = static_variant<TL::transform<TL::filter<tank_attachment::list, impl::has_state_type>,
+                                                           impl::get_state_type>>;
+
+using tap_requirement = fc::static_variant<TL::filter<tank_accessory_list, tap_requirement_filter::filter>>;
+using tap_requirement_state = static_variant<TL::transform<TL::filter<tap_requirement::list, impl::has_state_type>,
+                                                           impl::get_state_type>>;
 
 /// A structure on a tank which allows asset to be released from that tank by a particular authority with limits and
 /// requirements restricting when, why, and how much asset can be released

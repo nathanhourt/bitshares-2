@@ -23,7 +23,7 @@
  */
 #pragma once
 #include <graphene/protocol/base.hpp>
-#include <graphene/protocol/tnt/types_fwd.hpp>
+#include <graphene/protocol/tnt/accessories_fwd.hpp>
 
 namespace graphene { namespace protocol { namespace tnt {
 
@@ -39,14 +39,10 @@ struct parameters_type {
    uint64_t default_tap_requirement_deposit = GRAPHENE_DEFAULT_TAP_REQUIREMENT_DEPOSIT;
    /// The default deposit for tank attachments
    uint64_t default_tank_attachment_deposit = GRAPHENE_DEFAULT_TANK_ATTACHMENT_DEPOSIT;
-   /// The premium added to the deposit on stateful tank accessories (tank attachments or tap requirements)
+   /// The premium added to the deposit on stateful tank accessories
    uint64_t stateful_accessory_deposit_premium = GRAPHENE_DEFAULT_STATEFUL_ACCESSORY_DEPOSIT_PREMIUM;
-   /// Override deposit amounts for specific tap requirements
-   flat_map<tap_requirement::tag_type, uint64_t> override_tap_requirement_deposits =
-           GRAPHENE_DEFAULT_OVERRIDE_TAP_REQUIREMENT_DEPOSITS;
-   /// Override deposit amounts for specific tank attachments
-   flat_map<tap_requirement::tag_type, uint64_t> override_tank_attachment_deposits =
-           GRAPHENE_DEFAULT_OVERRIDE_TANK_ATTACHMENT_DEPOSITS;
+   /// Override deposit amounts for specific tank accessories
+   flat_map<uint64_t, uint64_t> override_deposits = GRAPHENE_DEFAULT_OVERRIDE_TANK_ACCESSORY_DEPOSITS;
 
    extensions_type extensions;
 };
@@ -55,5 +51,4 @@ struct parameters_type {
 
 FC_REFLECT(graphene::protocol::tnt::parameters_type,
            (max_sink_chain_length)(max_taps_to_open)(tank_deposit)(default_tap_requirement_deposit)
-           (default_tank_attachment_deposit)(stateful_accessory_deposit_premium)
-           (override_tap_requirement_deposits)(override_tank_attachment_deposits)(extensions))
+           (default_tank_attachment_deposit)(stateful_accessory_deposit_premium)(override_deposits)(extensions))

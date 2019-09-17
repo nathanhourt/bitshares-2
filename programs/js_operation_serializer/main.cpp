@@ -165,6 +165,8 @@ struct js_name< fc::static_variant<T...> >
       else return name;
    }
 };
+template<typename... T>
+struct js_name< fc::static_variant<fc::typelist::list<T...>> > : js_name< fc::static_variant<T...> > {};
 template<>
 struct js_name< fc::static_variant<> >
 {
@@ -307,6 +309,8 @@ struct serializer< fc::static_variant<T...>, false >
       std::cout << "var " <<  js_name<fc::static_variant<T...>>::name() << " = static_variant([" + js_sv_name<T...>::name() + "\n]);\n\n";
    }
 };
+template<typename... T>
+struct serializer< fc::static_variant<fc::typelist::list<T...>>, false > : serializer< fc::static_variant<T...> > {};
 template<>
 struct serializer< fc::static_variant<>, false >
 {
