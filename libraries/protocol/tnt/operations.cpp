@@ -104,8 +104,8 @@ void validate_queries(const vector<tnt::tank_query_type>& queries, const tank_id
          const auto& targeted_query = query.get<tnt::targeted_query<tnt::queries::redeem_ticket_to_open>>();
          const auto& ticket = targeted_query.query_content.ticket;
          FC_ASSERT(ticket.tank_ID == queried_tank, "Ticket tank does not match target");
-         FC_ASSERT(ticket.tap_ID == targeted_query.tap_ID, "Ticket tap does not match target");
-         FC_ASSERT(ticket.requirement_index == targeted_query.requirement_index,
+         FC_ASSERT(ticket.tap_ID == targeted_query.accessory_address.tap_ID, "Ticket tap does not match target");
+         FC_ASSERT(ticket.requirement_index == targeted_query.accessory_address.requirement_index,
                    "Ticket requirement index does not match target");
       }
    }

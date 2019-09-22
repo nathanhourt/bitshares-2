@@ -41,7 +41,7 @@ namespace graphene { namespace protocol { namespace tnt {
 /// @{
 
 /// Queries can be targeted at this type to pertain to the tank as a whole rather than any particular accessory
-struct tank_query {};
+struct tank_query { using target_type = tank_schematic; };
 
 namespace queries {
 
@@ -242,44 +242,80 @@ struct reset_exchange_and_meter {
 
 } // namespace queries
 
-/// A query with data specifying which accessory is being queried
-template<typename Query, typename = void>
-struct targeted_query {
-   using query_type = Query;
-   using target_type = typename Query::target_type;
-   static_assert(std::is_same<target_type, tank_query>{}, "Unrecognized query target type; known targets are tank "
-                                                          "attachments, tap requirements, and tank_query");
-
-   /// The content of the query
-   Query query_content;
-
-   FC_REFLECT_INTERNAL(targeted_query, (query_content))
-};
-template<typename Query>
-struct targeted_query<Query, std::enable_if_t<tank_attachment::can_store<typename Query::target_type>()>> {
-   using query_type = Query;
-   using target_type = typename Query::target_type;
-
-   /// The content of the query
-   Query query_content;
+/// An address of a particular tank accessory; content varies depending on the accessory type
+template<typename Accessory, typename = void>
+struct tank_accessory_address;
+template<typename Attachment>
+struct tank_accessory_address<Attachment, std::enable_if_t<tank_attachment::can_store<Attachment>()>> {
    /// The ID of the attachment to query
    index_type attachment_ID;
 
-   FC_REFLECT_INTERNAL(targeted_query, (query_content)(attachment_ID))
-};
-template<typename Query>
-struct targeted_query<Query, std::enable_if_t<tap_requirement::can_store<typename Query::target_type>()>> {
-   using query_type = Query;
-   using target_type = typename Query::target_type;
+   /// Get the tank attachment from the supplied tank schematic
+   const Attachment& get(const tank_schematic& schematic) const {
+      try {
+      FC_ASSERT(schematic.attachments.count(attachment_ID) != 0,
+                "Tank accessory address references nonexistent tap");
+      FC_ASSERT(schematic.attachments.at(attachment_ID).template is_type<Attachment>(),
+                "Tank accessory address references attachment of incorrect type");
+      return schematic.attachments.at(attachment_ID).template get<Attachment>();
+      } FC_CAPTURE_AND_RETHROW((*this))
+   }
 
-   /// The content of the query
-   Query query_content;
+   FC_REFLECT_INTERNAL(tank_accessory_address, (attachment_ID))
+};
+template<typename Requirement>
+struct tank_accessory_address<Requirement, std::enable_if_t<tap_requirement::can_store<Requirement>()>> {
    /// The ID of the tap with the requirement to query
    index_type tap_ID;
    /// The index of the requirement on the tap
    index_type requirement_index;
 
-   FC_REFLECT_INTERNAL(targeted_query, (query_content)(tap_ID)(requirement_index))
+   /// Get the tap requirement from the supplied tank schematic
+   const Requirement& get_target(const tank_schematic& schematic) {
+      FC_ASSERT(schematic.taps.count(tap_ID) != 0, "Tank accessory address references nonexistent tap");
+      const tap& tp = schematic.taps.at(tap_ID);
+      FC_ASSERT(tp.requirements.size() > requirement_index,
+                "Tank accessory address references nonexistent tap requirement");
+      FC_ASSERT(tp.requirements[requirement_index].template is_type<Requirement>(),
+                "Tank accessory address references tap requirement of incorrect type");
+      return tp.requirements[requirement_index].template get<Requirement>();
+   }
+
+   FC_REFLECT_INTERNAL(tank_accessory_address, (tap_ID)(requirement_index))
+};
+
+/// A query with data specifying which accessory is being queried
+template<typename Query, typename = void>
+struct targeted_query {
+   using query_type = Query;
+   using target_type = typename Query::target_type;
+   static_assert(std::is_same<target_type, tank_query>{}, "Unrecognized query target type; known targets are "
+                                                          "tank attachments, tap requirements, and tank_query");
+
+   /// The content of the query
+   Query query_content;
+
+   /// Get the query target from the supplied tank schematic
+   const target_type& get_target(const tank_schematic& schematic) {
+      return schematic;
+   }
+
+   FC_REFLECT_INTERNAL(targeted_query, (query_content))
+};
+template<typename Query>
+struct targeted_query<Query, std::enable_if_t<TL::contains<tank_accessory_list, typename Query::target_type>()>> {
+   using query_type = Query;
+   using target_type = typename Query::target_type;
+
+   /// The content of the query
+   Query query_content;
+   /// The address of the accessory
+   tank_accessory_address<target_type> accessory_address;
+
+   /// Get the query target from the supplied tank schematic
+   const target_type& get_target(const tank_schematic& schematic) { return accessory_address.get(schematic); }
+
+   FC_REFLECT_INTERNAL(targeted_query, (query_content)(accessory_address))
 };
 
 /// List of all query types. New types always go to the end.
@@ -318,4 +354,6 @@ FC_REFLECT(graphene::protocol::tnt::queries::reveal_hash_preimage, (preimage))
 FC_REFLECT(graphene::protocol::tnt::queries::redeem_ticket_to_open, (ticket)(ticket_signature))
 FC_REFLECT(graphene::protocol::tnt::queries::reset_exchange_and_meter, )
 
+FC_COMPLETE_INTERNAL_REFLECTION_TEMPLATE((typename Accessory),
+                                         graphene::protocol::tnt::tank_accessory_address<Accessory>)
 FC_COMPLETE_INTERNAL_REFLECTION_TEMPLATE((typename Query), graphene::protocol::tnt::targeted_query<Query>)
