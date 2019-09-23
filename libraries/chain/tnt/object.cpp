@@ -29,9 +29,15 @@
 namespace graphene { namespace chain {
 
 void tank_object::clear_tap_state(tnt::index_type tap_ID) {
-   auto itr = requirement_states.lower_bound(std::make_pair(tap_ID, 0));
-   while (itr != requirement_states.end() && itr->first.first == tap_ID)
-      itr = requirement_states.erase(itr);
+   tnt::tap_id_type id;
+   id.tap_id = tap_ID;
+   auto range = accessory_states.equal_range(id);
+   accessory_states.erase(range.first, range.second);
+}
+
+void tank_object::clear_attachment_state(tnt::index_type attachment_ID) {
+   // Type is ignored by accessory_states key search, so just choose an arbitrary type for the search
+   accessory_states.erase(tnt::tank_accessory_address<tnt::asset_flow_meter>{attachment_ID});
 }
 
 

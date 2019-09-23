@@ -108,9 +108,9 @@ void_result tank_update_evaluator::do_apply(const tank_update_evaluator::operati
          tank.deposit.move(-o.deposit_delta).unchecked_destroy();
 
       for (auto id : o.attachments_to_remove)
-         tank.attachment_states.erase(id);
+         tank.clear_attachment_state(id);
       for (auto id_att_pair : o.attachments_to_replace)
-         tank.attachment_states.erase(id_att_pair.first);
+         tank.clear_attachment_state(id_att_pair.first);
       for (auto id : o.taps_to_remove)
          tank.clear_tap_state(id);
       for (auto id_tap_pair : o.taps_to_replace)

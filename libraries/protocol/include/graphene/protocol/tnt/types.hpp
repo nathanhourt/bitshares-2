@@ -397,12 +397,10 @@ struct exchange_requirement {
 /// @}
 
 using tank_attachment = static_variant<TL::filter<tank_accessory_list, tank_attachment_filter::filter>>;
-using tank_attachment_state = static_variant<TL::transform<TL::filter<tank_attachment::list, impl::has_state_type>,
-                                                           impl::get_state_type>>;
-
 using tap_requirement = fc::static_variant<TL::filter<tank_accessory_list, tap_requirement_filter::filter>>;
-using tap_requirement_state = static_variant<TL::transform<TL::filter<tap_requirement::list, impl::has_state_type>,
-                                                           impl::get_state_type>>;
+
+using stateful_tank_accessory_list = TL::filter<tank_accessory_list, impl::has_state_type>;
+using tank_accessory_state = static_variant<TL::transform<stateful_tank_accessory_list, impl::get_state_type>>;
 
 /// A structure on a tank which allows asset to be released from that tank by a particular authority with limits and
 /// requirements restricting when, why, and how much asset can be released
@@ -441,6 +439,52 @@ struct tank_schematic {
 
    /// Returns the ID of the deposit_source_restrictor attachment, if one exists; null otherwise
    fc::optional<index_type> get_deposit_source_restrictor() const;
+};
+
+/// An address of a particular tank accessory; content varies depending on the accessory type
+template<typename Accessory, typename = void>
+struct tank_accessory_address;
+template<typename Attachment>
+struct tank_accessory_address<Attachment, std::enable_if_t<tank_attachment::can_store<Attachment>()>> {
+   using accessory_type = Attachment;
+
+   /// The ID of the attachment to query
+   index_type attachment_ID;
+
+   /// Get the tank attachment from the supplied tank schematic
+   const Attachment& get(const tank_schematic& schematic) const {
+      try {
+      FC_ASSERT(schematic.attachments.count(attachment_ID) != 0,
+                "Tank accessory address references nonexistent tap");
+      FC_ASSERT(schematic.attachments.at(attachment_ID).template is_type<Attachment>(),
+                "Tank accessory address references attachment of incorrect type");
+      return schematic.attachments.at(attachment_ID).template get<Attachment>();
+      } FC_CAPTURE_AND_RETHROW((*this))
+   }
+
+   FC_REFLECT_INTERNAL(tank_accessory_address, (attachment_ID))
+};
+template<typename Requirement>
+struct tank_accessory_address<Requirement, std::enable_if_t<tap_requirement::can_store<Requirement>()>> {
+   using accessory_type = Requirement;
+
+   /// The ID of the tap with the requirement to query
+   index_type tap_ID;
+   /// The index of the requirement on the tap
+   index_type requirement_index;
+
+   /// Get the tap requirement from the supplied tank schematic
+   const Requirement& get_target(const tank_schematic& schematic) {
+      FC_ASSERT(schematic.taps.count(tap_ID) != 0, "Tank accessory address references nonexistent tap");
+      const tap& tp = schematic.taps.at(tap_ID);
+      FC_ASSERT(tp.requirements.size() > requirement_index,
+                "Tank accessory address references nonexistent tap requirement");
+      FC_ASSERT(tp.requirements[requirement_index].template is_type<Requirement>(),
+                "Tank accessory address references tap requirement of incorrect type");
+      return tp.requirements[requirement_index].template get<Requirement>();
+   }
+
+   FC_REFLECT_INTERNAL(tank_accessory_address, (tap_ID)(requirement_index))
 };
 
 /// @}
@@ -496,3 +540,7 @@ FC_REFLECT_TYPENAME(graphene::protocol::tnt::deposit_source_restrictor::deposit_
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::deposit_source_restrictor::deposit_path_pattern)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::tank_attachment)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::tap_requirement)
+FC_REFLECT_TYPENAME(graphene::protocol::tnt::tank_accessory_state)
+
+FC_COMPLETE_INTERNAL_REFLECTION_TEMPLATE((typename Accessory),
+                                         graphene::protocol::tnt::tank_accessory_address<Accessory>)
