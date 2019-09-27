@@ -149,6 +149,8 @@ struct asset_flow_meter {
    asset_id_type asset_type;
    /// The sink which the metered asset is released to
    sink destination_sink;
+   /// The authority which may reset the meter; if null, only the emergency tap authority is accepted
+   optional<authority> reset_authority;
 
    optional<asset_id_type> receives_asset() const { return asset_type; }
    optional<sink> output_sink() const { return destination_sink; }
@@ -300,6 +302,8 @@ struct review_requirement {
    };
    /// Authority which approves or denies requests
    authority reviewer;
+   /// Maximum allowed number of pending requests; zero means no limit
+   index_type request_limit = 0;
 };
 
 /// Requires a non-empty documentation argument be provided when opening the tap
@@ -315,8 +319,8 @@ struct delay_requirement {
    constexpr static bool unique = true;
    /// This type describes a request to open the tap
    struct request_type {
-      /// When the request was made
-      time_point_sec delay_period_start;
+      /// When the request matures and can be consumed
+      time_point_sec delay_period_end;
       /// Amount requested
       asset_flow_limit request_amount;
       /// Optional comment about request; max 150 chars
@@ -325,8 +329,6 @@ struct delay_requirement {
    struct state_type {
       /// Number of requests made so far; used to assign request IDs
       index_type request_counter = 0;
-      /// Maximum allowed number of outstanding requests; zero means no limit
-      index_type request_limit = 0;
       /// Map of request ID to request
       flat_map<index_type, request_type> pending_requests;
    };
@@ -336,6 +338,8 @@ struct delay_requirement {
    /// Period in seconds after unlock request until tap unlocks; when tap opens,
    /// all state values are reset
    uint32_t delay_period_sec = 0;
+   /// Maximum allowed number of outstanding requests; zero means no limit
+   index_type request_limit = 0;
 };
 
 /// Requires an argument containing the preimage of a specified hash in order to open the tap
@@ -393,14 +397,16 @@ struct exchange_requirement {
    share_type release_per_tick;
    /// Amount of metered asset per tick
    share_type tick_amount;
+   /// Authority which can reset the amount released; if null, only the emergency tap authority is authorized
+   fc::optional<authority> reset_authority;
 };
 /// @}
 
-using tank_attachment = static_variant<TL::filter<tank_accessory_list, tank_attachment_filter::filter>>;
-using tap_requirement = fc::static_variant<TL::filter<tank_accessory_list, tap_requirement_filter::filter>>;
+using tank_attachment = TL::apply<TL::filter<tank_accessory_list, tank_attachment_filter::filter>, static_variant>;
+using tap_requirement = TL::apply<TL::filter<tank_accessory_list, tap_requirement_filter::filter>, static_variant>;
 
-using stateful_tank_accessory_list = TL::filter<tank_accessory_list, impl::has_state_type>;
-using tank_accessory_state = static_variant<TL::transform<stateful_tank_accessory_list, impl::get_state_type>>;
+using stateful_accessory_list = TL::filter<tank_accessory_list, impl::has_state_type>;
+using tank_accessory_state = TL::apply<TL::transform<stateful_accessory_list, impl::get_state_type>, static_variant>;
 
 /// A structure on a tank which allows asset to be released from that tank by a particular authority with limits and
 /// requirements restricting when, why, and how much asset can be released
@@ -441,52 +447,6 @@ struct tank_schematic {
    fc::optional<index_type> get_deposit_source_restrictor() const;
 };
 
-/// An address of a particular tank accessory; content varies depending on the accessory type
-template<typename Accessory, typename = void>
-struct tank_accessory_address;
-template<typename Attachment>
-struct tank_accessory_address<Attachment, std::enable_if_t<tank_attachment::can_store<Attachment>()>> {
-   using accessory_type = Attachment;
-
-   /// The ID of the attachment to query
-   index_type attachment_ID;
-
-   /// Get the tank attachment from the supplied tank schematic
-   const Attachment& get(const tank_schematic& schematic) const {
-      try {
-      FC_ASSERT(schematic.attachments.count(attachment_ID) != 0,
-                "Tank accessory address references nonexistent tap");
-      FC_ASSERT(schematic.attachments.at(attachment_ID).template is_type<Attachment>(),
-                "Tank accessory address references attachment of incorrect type");
-      return schematic.attachments.at(attachment_ID).template get<Attachment>();
-      } FC_CAPTURE_AND_RETHROW((*this))
-   }
-
-   FC_REFLECT_INTERNAL(tank_accessory_address, (attachment_ID))
-};
-template<typename Requirement>
-struct tank_accessory_address<Requirement, std::enable_if_t<tap_requirement::can_store<Requirement>()>> {
-   using accessory_type = Requirement;
-
-   /// The ID of the tap with the requirement to query
-   index_type tap_ID;
-   /// The index of the requirement on the tap
-   index_type requirement_index;
-
-   /// Get the tap requirement from the supplied tank schematic
-   const Requirement& get_target(const tank_schematic& schematic) {
-      FC_ASSERT(schematic.taps.count(tap_ID) != 0, "Tank accessory address references nonexistent tap");
-      const tap& tp = schematic.taps.at(tap_ID);
-      FC_ASSERT(tp.requirements.size() > requirement_index,
-                "Tank accessory address references nonexistent tap requirement");
-      FC_ASSERT(tp.requirements[requirement_index].template is_type<Requirement>(),
-                "Tank accessory address references tap requirement of incorrect type");
-      return tp.requirements[requirement_index].template get<Requirement>();
-   }
-
-   FC_REFLECT_INTERNAL(tank_accessory_address, (tap_ID)(requirement_index))
-};
-
 /// @}
 
 } } } // namespace graphene::protocol::tnt
@@ -499,7 +459,7 @@ FC_REFLECT(graphene::protocol::tnt::unlimited_flow,)
 FC_REFLECT(graphene::protocol::tnt::same_tank,)
 
 FC_REFLECT(graphene::protocol::tnt::asset_flow_meter::state_type, (metered_amount))
-FC_REFLECT(graphene::protocol::tnt::asset_flow_meter, (asset_type)(destination_sink))
+FC_REFLECT(graphene::protocol::tnt::asset_flow_meter, (asset_type)(destination_sink)(reset_authority))
 FC_REFLECT(graphene::protocol::tnt::deposit_source_restrictor::wildcard_sink, (repeatable))
 FC_REFLECT(graphene::protocol::tnt::deposit_source_restrictor, (legal_deposit_paths))
 FC_REFLECT(graphene::protocol::tnt::tap_opener, (tap_index)(release_amount)(destination_sink)(asset_type))
@@ -514,20 +474,20 @@ FC_REFLECT(graphene::protocol::tnt::minimum_tank_level, (minimum_level))
 FC_REFLECT(graphene::protocol::tnt::review_requirement::request_type,
            (request_amount)(request_comment)(approved))
 FC_REFLECT(graphene::protocol::tnt::review_requirement::state_type, (request_counter)(pending_requests))
-FC_REFLECT(graphene::protocol::tnt::review_requirement, (reviewer))
+FC_REFLECT(graphene::protocol::tnt::review_requirement, (reviewer)(request_limit))
 FC_REFLECT(graphene::protocol::tnt::documentation_requirement,)
 FC_REFLECT(graphene::protocol::tnt::delay_requirement::request_type,
-           (delay_period_start)(request_amount)(request_comment))
+           (delay_period_end)(request_amount)(request_comment))
 FC_REFLECT(graphene::protocol::tnt::delay_requirement::state_type,
-           (request_counter)(request_limit)(pending_requests))
-FC_REFLECT(graphene::protocol::tnt::delay_requirement, (veto_authority)(delay_period_sec))
+           (request_counter)(pending_requests))
+FC_REFLECT(graphene::protocol::tnt::delay_requirement, (veto_authority)(delay_period_sec)(request_limit))
 FC_REFLECT(graphene::protocol::tnt::hash_preimage_requirement, (hash)(preimage_size))
 FC_REFLECT(graphene::protocol::tnt::ticket_requirement::ticket_type,
            (tank_ID)(tap_ID)(requirement_index)(max_withdrawal)(ticket_number))
 FC_REFLECT(graphene::protocol::tnt::ticket_requirement::state_type, (tickets_consumed))
 FC_REFLECT(graphene::protocol::tnt::ticket_requirement, (ticket_signer))
 FC_REFLECT(graphene::protocol::tnt::exchange_requirement::state_type, (amount_released))
-FC_REFLECT(graphene::protocol::tnt::exchange_requirement, (meter_id)(release_per_tick)(tick_amount))
+FC_REFLECT(graphene::protocol::tnt::exchange_requirement, (meter_id)(release_per_tick)(tick_amount)(reset_authority))
 FC_REFLECT(graphene::protocol::tnt::tap,
            (connected_sink)(open_authority)(connect_authority)(requirements)(destructor_tap))
 FC_REFLECT(graphene::protocol::tnt::tank_schematic,
@@ -541,6 +501,3 @@ FC_REFLECT_TYPENAME(graphene::protocol::tnt::deposit_source_restrictor::deposit_
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::tank_attachment)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::tap_requirement)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::tank_accessory_state)
-
-FC_COMPLETE_INTERNAL_REFLECTION_TEMPLATE((typename Accessory),
-                                         graphene::protocol::tnt::tank_accessory_address<Accessory>)

@@ -30,10 +30,10 @@
 #include <graphene/protocol/tnt/validation.hpp>
 
 namespace graphene { namespace chain {
-namespace tnt = graphene::protocol::tnt;
+namespace ptnt = graphene::protocol::tnt;
 
-tnt::tank_lookup_function make_lookup(const database& d) {
-   return [&d](tank_id_type id) -> const tnt::tank_schematic* {
+ptnt::tank_lookup_function make_lookup(const database& d) {
+   return [&d](tank_id_type id) -> const ptnt::tank_schematic* {
       try {
          const auto& tank = id(d);
          return &tank.schematic;
@@ -52,8 +52,8 @@ void_result tank_create_evaluator::do_evaluate(const tank_create_operation& o) {
    FC_ASSERT(d.get_balance(o.payer, asset_id_type()).amount >= o.deposit_amount,
              "Insufficient balance to pay the deposit");
 
-   new_tank = tnt::tank_schematic::from_create_operation(o);
-   tnt::tank_validator validator(new_tank, tnt_parameters->max_sink_chain_length, make_lookup(d));
+   new_tank = ptnt::tank_schematic::from_create_operation(o);
+   ptnt::tank_validator validator(new_tank, tnt_parameters->max_sink_chain_length, make_lookup(d));
    validator.validate_tank();
    FC_ASSERT(validator.calculate_deposit(*tnt_parameters) == o.deposit_amount, "Incorrect deposit amount");
 
@@ -83,7 +83,7 @@ void_result tank_update_evaluator::do_evaluate(const tank_update_evaluator::oper
              "Tank update authority is incorrect");
    updated_tank = old_tank->schematic;
    updated_tank.update_from_operation(o);
-   tnt::tank_validator validator(updated_tank, tnt_parameters->max_sink_chain_length, make_lookup(d), old_tank->id);
+   ptnt::tank_validator validator(updated_tank, tnt_parameters->max_sink_chain_length, make_lookup(d), old_tank->id);
    validator.validate_tank();
 
    auto new_deposit = validator.calculate_deposit(*tnt_parameters);
@@ -138,6 +138,40 @@ void_result tank_delete_evaluator::do_apply(const tank_delete_evaluator::operati
    d.adjust_balance(o.payer, o.deposit_claimed);
    d.remove(*old_tank);
 
+   return {};
+}
+
+void_result tank_query_evaluator::do_evaluate(const tank_query_evaluator::operation_type& o) {
+   const auto& d = db();
+   query_tank = &o.tank_to_query(d);
+   evaluator.set_query_tank(*query_tank);
+   std::set<decltype(o.required_authorities)::const_iterator> used_auths;
+
+   for(const auto& query : o.queries) { try {
+      auto required_auths = evaluator.evaluate_query(query, d);
+      for (const auto& auth : required_auths) {
+         auto itr = std::find(o.required_authorities.begin(), o.required_authorities.end(), auth);
+         FC_ASSERT(itr != o.required_authorities.end(), "Missing required authority for query: ${A}", ("A", auth));
+         used_auths.insert(itr);
+      }
+   } FC_CAPTURE_AND_RETHROW((query)) }
+
+   if (used_auths.size() != o.required_authorities.size()) {
+      vector<authority> unused_auths;
+      for (auto itr = o.required_authorities.begin(); itr != o.required_authorities.end(); ++itr)
+         if (used_auths.count(itr) == 0)
+            unused_auths.push_back(*itr);
+      FC_THROW_EXCEPTION(fc::assert_exception, "Authorities were declared as required, but not used: ${Auths}",
+                         ("Auths", unused_auths));
+   }
+
+   return {};
+}
+
+void_result tank_query_evaluator::do_apply(const tank_query_evaluator::operation_type&) {
+   db().modify(*query_tank, [&evaluator=evaluator](tank_object& tank) {
+      evaluator.apply_queries(tank);
+   });
    return {};
 }
 

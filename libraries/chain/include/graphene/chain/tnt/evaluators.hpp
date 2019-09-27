@@ -24,6 +24,7 @@
 #pragma once
 
 #include <graphene/chain/evaluator.hpp>
+#include <graphene/chain/tnt/query_evaluator.hpp>
 
 #include <graphene/protocol/tnt/operations.hpp>
 
@@ -36,7 +37,7 @@ class tank_create_evaluator : public evaluator<tank_create_evaluator> {
    void_result do_evaluate(const operation_type& o);
    object_id_type do_apply(const operation_type&);
 
-   tnt::tank_schematic new_tank;
+   ptnt::tank_schematic new_tank;
 };
 
 class tank_update_evaluator : public evaluator<tank_update_evaluator> {
@@ -45,8 +46,8 @@ class tank_update_evaluator : public evaluator<tank_update_evaluator> {
    void_result do_evaluate(const operation_type& o);
    void_result do_apply(const operation_type& o);
 
-   const tank_object* old_tank;
-   tnt::tank_schematic updated_tank;
+   const tank_object* old_tank = nullptr;
+   ptnt::tank_schematic updated_tank;
 };
 
 class tank_delete_evaluator : public evaluator<tank_delete_evaluator> {
@@ -56,6 +57,16 @@ class tank_delete_evaluator : public evaluator<tank_delete_evaluator> {
    void_result do_apply(const operation_type& o);
 
    const tank_object* old_tank;
+};
+
+class tank_query_evaluator : public evaluator<tank_query_evaluator> {
+   using operation_type = tank_query_operation;
+
+   void_result do_evaluate(const operation_type& o);
+   void_result do_apply(const operation_type&);
+
+   const tank_object* query_tank = nullptr;
+   tnt::query_evaluator evaluator;
 };
 
 } } // namespace graphene::chain

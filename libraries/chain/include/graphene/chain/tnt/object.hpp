@@ -25,77 +25,20 @@
 
 #include <graphene/chain/types.hpp>
 
-#include <graphene/db/generic_index.hpp>
-
+#include <graphene/protocol/tnt/tank_accessory_address.hpp>
 #include <graphene/protocol/asset.hpp>
-#include <graphene/protocol/tnt/types.hpp>
+
+#include <graphene/db/generic_index.hpp>
 
 namespace graphene { namespace chain {
 
-namespace impl {
 /// Variant capable of containing the address of any stateful accessory
-using stateful_accessory_address = tnt::TL::apply<tnt::TL::apply_each<tnt::stateful_tank_accessory_list,
+using stateful_accessory_address = tnt::TL::apply<tnt::TL::apply_each<tnt::stateful_accessory_list,
                                                                       tnt::tank_accessory_address>, static_variant>;
 
-/// Comparator for stateful_accessory_address types; uses the following semantics:
-///  - Ordering is done according to address value, not type
-///  - Tank attachment addresses are ordered by their attachment IDs
-///  - Tap requirement addresses are ordered by their (tap ID, requirement index) pairs
-///  - Tank attachment addresses are ordered before tap requirement addresses
-/// The comparator also accepts tap_id_type operands, which match as equal to all requirement addresses on that tap
-struct address_lt {
-   using is_transparent = void;
-   template<typename Address, typename = std::enable_if_t<stateful_accessory_address::can_store<Address>()>>
-   constexpr static bool is_requirement_address = (Address::accessory_type::accessory_type ==
-                                                   tnt::tap_requirement_accessory_type);
-
-   template<typename Address_A, typename Address_B, std::enable_if_t<!is_requirement_address<Address_A> &&
-                                                                     !is_requirement_address<Address_B>, bool> = true>
-   bool compare(const Address_A& a, const Address_B& b) const {
-      return a.attachment_ID < b.attachment_ID;
-   }
-   template<typename Address_A, typename Address_B, std::enable_if_t<is_requirement_address<Address_A> &&
-                                                                     is_requirement_address<Address_B>, bool> = true>
-   bool compare(const Address_A& a, const Address_B& b) const {
-      return std::make_pair(a.tap_ID, a.requirement_index) < std::make_pair(b.tap_ID, b.requirement_index);
-   }
-   template<typename Address_A, typename Address_B, std::enable_if_t<is_requirement_address<Address_A> !=
-                                                                     is_requirement_address<Address_B>, bool> = true>
-   bool compare(const Address_A&, const Address_B&) const {
-      return !is_requirement_address<Address_A>;
-   }
-   template<typename Address, std::enable_if_t<is_requirement_address<Address>, bool> = true>
-   bool compare(const Address& a, const tnt::tap_id_type& tid) const { return a.tap_ID < tid.tap_id; }
-   template<typename Address, std::enable_if_t<!is_requirement_address<Address>, bool> = true>
-   bool compare(const Address&, const tnt::tap_id_type&) const { return true; }
-   template<typename Address, std::enable_if_t<is_requirement_address<Address>, bool> = true>
-   bool compare(const tnt::tap_id_type& tid, const Address& a) const { return tid.tap_id < a.tap_ID; }
-   template<typename Address, std::enable_if_t<!is_requirement_address<Address>, bool> = true>
-   bool compare(const tnt::tap_id_type&, const Address&) const { return false; }
-   bool operator()(const stateful_accessory_address& a, const stateful_accessory_address& b) const {
-      return tnt::TL::runtime::dispatch(stateful_accessory_address::list(), a.which(), [this, &a, &b] (auto A) {
-         using A_type = typename decltype(A)::type;
-         return tnt::TL::runtime::dispatch(stateful_accessory_address::list(), b.which(), [this, &a, &b](auto B) {
-            using B_type = typename decltype(B)::type;
-            return this->compare(a.get<A_type>(), b.get<B_type>());
-         });
-      });
-   }
-   bool operator()(const stateful_accessory_address& a, const tnt::tap_id_type& tid) const {
-      return tnt::TL::runtime::dispatch(stateful_accessory_address::list(), a.which(), [this, &a, &tid](auto A) {
-         return this->compare(a.get<typename decltype(A)::type>(), tid);
-      });
-   }
-   bool operator()(const tnt::tap_id_type& tid, const stateful_accessory_address& a) const {
-      return tnt::TL::runtime::dispatch(stateful_accessory_address::list(), a.which(), [this, &tid, &a](auto A) {
-         return this->compare(tid, a.get<typename decltype(A)::type>());
-      });
-   }
-};
-
 /// A map of address to state value for stateful accessory types
-using accessory_state_map = flat_map<stateful_accessory_address, tnt::tank_accessory_state, address_lt>;
-}
+using accessory_state_map = flat_map<stateful_accessory_address, tnt::tank_accessory_state,
+                                     tnt::accessory_address_lt<stateful_accessory_address>>;
 
 /// @brief An asset storage container which is the core of Tanks and Taps, a framework for general smart contract
 /// asset management
@@ -118,9 +61,54 @@ public:
    asset_store deposit;
 
    /// Storage of tank accessories' states
-   impl::accessory_state_map accessory_states;
+   accessory_state_map accessory_states;
    /// Cache of the ID of the tank's deposit_source_restrictor, if it has one
    optional<tnt::index_type> restrictor_ID;
+
+   /// Get state by address (const, generic types)
+   const tnt::tank_accessory_state* get_state(const stateful_accessory_address& address) const {
+      auto itr = accessory_states.find(address);
+      if (itr == accessory_states.end())
+         return nullptr;
+      return &itr->second;
+   }
+   /// Get state by address (const, specific types)
+   template<typename Accessory, typename State = typename Accessory::state_type>
+   const State* get_state(const tnt::tank_accessory_address<Accessory>& address) const {
+      auto itr = accessory_states.find(address);
+      if (itr == accessory_states.end())
+         return nullptr;
+      FC_ASSERT(itr->second.template is_type<State>(), "Accessory state has unexpected type");
+      return &itr->second.template get<State>();
+   }
+   /// Get state by address (mutable, generic types)
+   tnt::tank_accessory_state* get_state(const stateful_accessory_address& address) {
+      return const_cast<tnt::tank_accessory_state*>(const_cast<const tank_object*>(this)->get_state(address));
+   }
+   /// Get state by address (mutable, specific types)
+   template<typename Accessory, typename State = typename Accessory::state_type>
+   State* get_state(const tnt::tank_accessory_address<Accessory>& address) {
+      return const_cast<State*>(const_cast<const tank_object*>(this)->get_state(address));
+   }
+   /// Get state by address, creating a default one if none yet exists (generic types)
+   tnt::tank_accessory_state& get_or_create_state(const stateful_accessory_address& address) {
+      auto itr = accessory_states.find(address);
+      if (itr == accessory_states.end()) {
+         itr = accessory_states.insert(std::make_pair(address, tnt::tank_accessory_state())).first;
+         itr->second.set_which(address.which());
+      }
+      return itr->second;
+   }
+   /// Get state by address, creating a default one if none yet exists (specific types)
+   template<typename Accessory, typename State = typename Accessory::state_type>
+   State& get_or_create_state(const tnt::tank_accessory_address<Accessory>& address) {
+      auto itr = accessory_states.find(address);
+      if (itr == accessory_states.end()) {
+         auto state = std::make_pair(stateful_accessory_address(address), tnt::tank_accessory_state(State()));
+         itr = accessory_states.insert(std::move(state)).first;
+      }
+      return itr->second.template get<State>();
+   }
 
    /// Delete state for any/all requirements on the specified tap
    void clear_tap_state(tnt::index_type tap_ID);

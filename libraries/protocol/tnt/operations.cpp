@@ -93,10 +93,14 @@ share_type tank_query_operation::calculate_fee(const fee_parameters_type& params
    return params.base_fee + (fc::raw::pack_size(*this) * params.price_per_byte);
 }
 
-void validate_queries(const vector<tnt::tank_query_type>& queries, const tank_id_type& queried_tank) {
+void validate_queries(const vector<tnt::tank_query_type>& queries, const tank_id_type& queried_tank, bool tap_open) {
    for (const auto& query : queries) {
-      query.visit([](const auto& q) {
+      query.visit([tap_open](const auto& q) {
          q.query_content.validate();
+         using query_type = typename std::decay_t<decltype(q)>::query_type;
+         if (query_type::tap_open_only)
+            FC_ASSERT(tap_open, "${Q} may only be used in tap_open_operation, not tank_query_operations",
+                      ("Q", fc::get_typename<query_type>::name()));
       });
 
       // Dirty, but I couldn't think of a simpler way to check this
@@ -117,7 +121,7 @@ void tank_query_operation::validate() const {
       FC_ASSERT(std::find(itr+1, required_authorities.end(), *itr) == required_authorities.end(),
                 "required_authorities must not contain duplicates");
    FC_ASSERT(!queries.empty(), "Query list must not be empty");
-   validate_queries(queries, tank_to_query);
+   validate_queries(queries, tank_to_query, false);
 }
 
 share_type tap_open_operation::calculate_fee(const fee_parameters_type& params) const {
@@ -130,7 +134,7 @@ void tap_open_operation::validate() const {
       FC_ASSERT(std::find(itr+1, required_authorities.end(), *itr) == required_authorities.end(),
                 "required_authorities must not contain duplicates");
    FC_ASSERT(tap_to_open.tank_id.valid(), "Tank ID must be specified");
-   validate_queries(queries, *tap_to_open.tank_id);
+   validate_queries(queries, *tap_to_open.tank_id, true);
 
    if (release_amount.is_type<share_type>()) {
       FC_ASSERT(release_amount.get<share_type>() >= 0, "Release amount must not be negative");

@@ -23,7 +23,7 @@
  * THE SOFTWARE.
  */
 
-#include <graphene/protocol/tnt/types.hpp>
+#include <graphene/protocol/tnt/tank_accessory_address.hpp>
 
 namespace graphene { namespace protocol { namespace tnt {
 
@@ -35,7 +35,8 @@ namespace graphene { namespace protocol { namespace tnt {
 /// control details about the action to take.
 ///
 /// All queries specify a target type, which is the particular accessory type they pertain to. If a query pertains to
-/// the tank in general, its target type should be @ref tank_query.
+/// the tank in general, its target type should be @ref tank_query. All queries also provide a tap_open_only boolean,
+/// which is true if the query must only be used in a tap_open_operation and not a tank_query_operation
 ///
 /// All queries must be declared in this file. Query implementation logic is defined in the chain library.
 /// @{
@@ -48,6 +49,7 @@ namespace queries {
 /// Reset a meter to zero
 struct reset_meter {
    using target_type = asset_flow_meter;
+   constexpr static bool tap_open_only = false;
    // No arguments
 
    void validate() const {}
@@ -56,6 +58,7 @@ struct reset_meter {
 /// Reconnect a tank attachment that receives asset so it deposits asset to a new sink
 struct reconnect_attachment {
    using target_type = attachment_connect_authority;
+   constexpr static bool tap_open_only = false;
 
    /// The new sink to connect the attachment to
    sink new_sink;
@@ -66,6 +69,7 @@ struct reconnect_attachment {
 /// Create a new request to open a tap which has a @ref review_requirement
 struct create_request_for_review {
    using target_type = review_requirement;
+   constexpr static bool tap_open_only = false;
 
    /// The amount being requested to release through the tap
    asset_flow_limit request_amount;
@@ -85,6 +89,7 @@ struct create_request_for_review {
 /// Review a request to open a tap which has a @ref review_requirement
 struct review_request_to_open {
    using target_type = review_requirement;
+   constexpr static bool tap_open_only = false;
 
    /// ID of the request being reviewed
    index_type request_ID;
@@ -104,6 +109,7 @@ struct review_request_to_open {
 /// Cancel a request to open a tap which has a @ref review_requirement
 struct cancel_request_for_review {
    using target_type = review_requirement;
+   constexpr static bool tap_open_only = false;
 
    /// ID of the request to cancel
    index_type request_ID;
@@ -121,6 +127,7 @@ struct cancel_request_for_review {
 /// Open a tap which has a @ref review_requirement by consuming an approved request
 struct consume_approved_request_to_open {
    using target_type = review_requirement;
+   constexpr static bool tap_open_only = true;
 
    /// ID of the request to consume
    index_type request_ID;
@@ -132,6 +139,7 @@ struct consume_approved_request_to_open {
 struct documentation_string {
    // Documentation is always allowed, even if there is no documentation_requirement, so target the tank itself
    using target_type = tank_query;
+   constexpr static bool tap_open_only = false;
 
    /// The documented reason for action; max 150 chars
    string reason;
@@ -145,6 +153,7 @@ struct documentation_string {
 /// Create a new request to open a tap which has a @ref delay_requirement
 struct create_request_for_delay {
    using target_type = delay_requirement;
+   constexpr static bool tap_open_only = false;
 
    /// The amount being requested to release through the tap
    asset_flow_limit request_amount;
@@ -164,6 +173,7 @@ struct create_request_for_delay {
 /// Veto a request to open a tap which has a @ref delay_requirement
 struct veto_request_in_delay {
    using target_type = delay_requirement;
+   constexpr static bool tap_open_only = false;
 
    /// ID of the request to veto
    index_type request_ID;
@@ -181,6 +191,7 @@ struct veto_request_in_delay {
 /// Cancel a request to open a tap which has a @ref delay_requirement
 struct cancel_request_in_delay {
    using target_type = delay_requirement;
+   constexpr static bool tap_open_only = false;
 
    /// ID of the request to cancel
    index_type request_ID;
@@ -198,6 +209,7 @@ struct cancel_request_in_delay {
 /// Open a tap which has a @ref delay_requirement by consuming a matured request
 struct consume_matured_request_to_open {
    using target_type = delay_requirement;
+   constexpr static bool tap_open_only = true;
 
    /// ID of the request to consume
    index_type request_ID;
@@ -208,6 +220,7 @@ struct consume_matured_request_to_open {
 /// Provide a preimage to a hash value to fulfill a @ref hash_preimage_requirement
 struct reveal_hash_preimage {
    using target_type = hash_preimage_requirement;
+   constexpr static bool tap_open_only = true;
 
    /// Preimage of the hash
    vector<char> preimage;
@@ -220,6 +233,7 @@ struct reveal_hash_preimage {
 /// Provide a signed ticket authorizing the opening of a tap with a @ref ticket_requirement
 struct redeem_ticket_to_open {
    using target_type = ticket_requirement;
+   constexpr static bool tap_open_only = true;
 
    /// The ticket being redeemed
    ticket_requirement::ticket_type ticket;
@@ -232,9 +246,12 @@ struct redeem_ticket_to_open {
    }
 };
 
-/// Reset both an exchange requirement's amount released and the meter it monitors to zero
-struct reset_exchange_and_meter {
+/// Reset an exchange requirement's amount released to zero
+/// Note: To protect users from costly errors, this query requires that the exchange requirement's meter be zero in
+/// order to succeed. Thus it is recommended to use this query only after a reset_meter query on the exchange meter.
+struct reset_exchange_requirement {
    using target_type = exchange_requirement;
+   constexpr static bool tap_open_only = false;
    // No arguments
 
    void validate() const {}
@@ -271,7 +288,7 @@ struct targeted_query<Query, std::enable_if_t<TL::contains<tank_accessory_list, 
    tank_accessory_address<target_type> accessory_address;
 
    /// Get the query target from the supplied tank schematic
-   const target_type& get_target(const tank_schematic& schematic) { return accessory_address.get(schematic); }
+   const target_type& get_target(const tank_schematic& schematic) const { return accessory_address.get(schematic); }
 
    FC_REFLECT_INTERNAL(targeted_query, (query_content)(accessory_address))
 };
@@ -284,13 +301,13 @@ using query_type_list = fc::typelist::list<queries::reset_meter, queries::reconn
                                            queries::create_request_for_delay, queries::veto_request_in_delay,
                                            queries::cancel_request_in_delay, queries::consume_matured_request_to_open,
                                            queries::reveal_hash_preimage, queries::redeem_ticket_to_open,
-                                           queries::reset_exchange_and_meter>;
+                                           queries::reset_exchange_requirement>;
 
 /// Typelist transformer to convert a query type to a targeted query
 template<typename Q> struct to_targeted_query { using type = targeted_query<Q>; };
 
 /// static_variant of all tank query types, with target information
-using tank_query_type = static_variant<fc::typelist::transform<query_type_list, to_targeted_query>>;
+using tank_query_type = TL::apply<TL::transform<query_type_list, to_targeted_query>, static_variant>;
 
 /// @}
 
@@ -310,6 +327,6 @@ FC_REFLECT(graphene::protocol::tnt::queries::cancel_request_in_delay, (request_I
 FC_REFLECT(graphene::protocol::tnt::queries::consume_matured_request_to_open, (request_ID))
 FC_REFLECT(graphene::protocol::tnt::queries::reveal_hash_preimage, (preimage))
 FC_REFLECT(graphene::protocol::tnt::queries::redeem_ticket_to_open, (ticket)(ticket_signature))
-FC_REFLECT(graphene::protocol::tnt::queries::reset_exchange_and_meter, )
+FC_REFLECT(graphene::protocol::tnt::queries::reset_exchange_requirement, )
 
 FC_COMPLETE_INTERNAL_REFLECTION_TEMPLATE((typename Query), graphene::protocol::tnt::targeted_query<Query>)
