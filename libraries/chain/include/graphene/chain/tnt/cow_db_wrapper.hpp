@@ -36,9 +36,23 @@ struct cow_refletion_data {
    const database& db;
    object_id_type object_id;
    std::unique_ptr<object> written;
-   vector<std::function<void(object&)>> updates;
-   cow_refletion_data(const database& db, object_id_type object_id) : db(db), object_id(object_id) {}
+   std::function<void(cow_refletion_data&, database&)> update;
 
+   template<typename T>
+   static cow_refletion_data create(const database& db, object_id_type object_id) {
+      cow_refletion_data data(db, object_id);
+      data.update = [](cow_refletion_data& data, database& mutable_db) {
+         if (data.written == nullptr)
+            return;
+         const T& dest = mutable_db.get<T>(data.object_id);
+         T* src = dynamic_cast<T*>(data.written.get());
+         FC_ASSERT(src != nullptr, "LOGIC ERROR: Tried to update object with incorrect source type. "
+                                   "Please report this error.");
+         mutable_db.modify(dest, [src](T& dest) { dest = std::move(*src); });
+         data.written.reset();
+      };
+      return data;
+   }
    template<typename T>
    T& get_written() {
       FC_ASSERT(written, "LOGIC ERROR: Tried to fetch written object when none exists. Please report this error.");
@@ -47,6 +61,9 @@ struct cow_refletion_data {
                                 "Please report this error.");
       return *ptr;
    }
+
+private:
+   cow_refletion_data(const database& db, object_id_type object_id) : db(db), object_id(object_id) {}
 };
 struct cow_data_lt {
    using is_transparent=void;
@@ -95,35 +112,37 @@ struct cow_field_reflection {
       return cache = impl::make_getter<Reflectors>();
    }
 
+   /// Get a const reference to the field
    const Field& get() const {
       if (data->written)
          return make_getter()(data->get_written<RootObject>());
       return field;
    }
+   /// Get a mutable reference to the field (triggers a copy)
    Field& set() {
       if (!data->written)
          data->written = data->db.get_object(data->object_id).clone();
       return make_getter()(data->get_written<RootObject>());
    }
+
+   /// Function call operator, returns a Field (for types without reflections only)
    template<typename F = Field, std::enable_if_t<!fc::object_reflection<F>::is_defined, bool> = true>
    const Field& operator()() const { return get(); }
+   /// Function call operator, returns a cow_object<Field> (for types with reflections only)
    template<typename F = Field, std::enable_if_t<fc::object_reflection<F>::is_defined, bool> = true>
    cow_object<Field> operator()() const { return cow_object<Field>(get(), data); }
 
+   /// Conversion to Field& (same as @ref get)
    template<typename F = Field, std::enable_if_t<!fc::object_reflection<F>::is_defined, bool> = true>
    operator const Field&() const { return get(); }
-   template<typename F = Field, std::enable_if_t<fc::object_reflection<F>::is_defined, bool> = true>
-   operator const Field&() const { return cow_object<Field>(get(), data); }
 
-   Field& operator=(const Field& value) {
-      return set() = value;
-   }
-   Field& operator=(Field&& value) {
-      return set() = std::move(value);
-   }
-   Field* operator->() {
-      return &set();
-   }
+   /// Assign from Field
+   Field& operator=(const Field& value) { return set() = value; }
+   /// Move-assign from Field
+   Field& operator=(Field&& value) { return set() = std::move(value); }
+   /// Arrow operator (for mutable access to the field)
+   Field* operator->() { return &set(); }
+   /// Subscript operator (always mutable, only available if Field has a subscript operator)
    template<typename Arg, typename = make_void<decltype(std::declval<Field>()[std::declval<Arg>()])>>
    decltype(auto) operator[](Arg&& arg) { return set()[std::forward<Arg>(arg)]; }
 };
@@ -161,6 +180,9 @@ struct cow_field_reflection {
  *
  * // If the field provides a subscript operator, this can also be used, but this always triggers a copy
  * my_object.map_field["key"] = value;
+ *
+ * // To write all changes to the database, call @ref commit
+ * wrapper.commit(mutable_db);
  * \endcode
  */
 class cow_db_wrapper {
@@ -177,15 +199,28 @@ public:
    cow_object<T> get(object_id_type id) const {
       decltype(pensive_cattle)::iterator itr = pensive_cattle.find(id);
       if (itr == pensive_cattle.end())
-         itr = pensive_cattle.emplace(db, id).first;
+         itr = pensive_cattle.insert(impl::cow_refletion_data::create<T>(db, id)).first;
       return cow_object<T>(db.get<T>(id), const_cast<impl::cow_refletion_data*>(&*itr));
    }
    template<uint8_t SpaceID, uint8_t TypeID>
    auto get(object_id<SpaceID, TypeID> id) const {
+      using Object = object_downcast_t<decltype(id)>;
       auto itr = pensive_cattle.find(id);
       if (itr == pensive_cattle.end())
-         itr = pensive_cattle.emplace(db, id).first;
-      return cow_object<object_downcast_t<decltype(id)>>(db.get(id), const_cast<impl::cow_refletion_data*>(&*itr));
+         itr = pensive_cattle.insert(impl::cow_refletion_data::create<Object>(db, id)).first;
+      return cow_object<Object>(db.get(id), const_cast<impl::cow_refletion_data*>(&*itr));
+   }
+
+   /// Write all changes to the database
+   void commit(database& mutable_db) {
+      static_assert(!std::is_const<decltype(pensive_cattle)>::value, "");
+      for (auto& const_cow : pensive_cattle) {
+         // I do not understand why cow is const... compiler bug? Fix it.
+         auto& cow = const_cast<impl::cow_refletion_data&>(const_cow);
+         if (cow.written == nullptr) continue;
+         FC_ASSERT(cow.update, "LOGIC ERROR: Update method not set on copy-on-write data. Please report this error.");
+         cow.update(cow, mutable_db);
+      }
    }
 };
 
