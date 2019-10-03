@@ -265,7 +265,7 @@ namespace graphene { namespace protocol {
          void unchecked_destroy() { asset_store(*this).unchecked_destroy(); }
       };
 
-      struct reflection : public fc::field_reflection<0, asset_store, asset, &asset_store::store_amount> {
+      struct reflector : public fc::field_reflector<0, asset_store, asset, &asset_store::store_amount> {
          static const asset& get(const asset_store& store) { return store.store_amount; }
       };
 
@@ -327,8 +327,8 @@ namespace graphene { namespace protocol {
       template<typename DS> void pack(DS& datastream) const;
       template<typename DS> void unpack(DS& datastream);
 
-      struct FC_internal_reflection {
-         using members = fc::typelist::list<reflection>;
+      struct FC_internal_reflector {
+         using members = fc::typelist::list<reflector>;
          template<typename V> static void visit(const V&) {
             constexpr bool No = std::is_integral<V>::value;
             static_assert(No, "asset_store is not compatible with legacy FC reflection visitors");
@@ -379,4 +379,4 @@ template<typename DS> inline void unpack(DS& ds, graphene::protocol::asset_store
 { as.unpack(ds); }
 } } // namespace fc::raw
 
-FC_COMPLETE_INTERNAL_REFLECTION(graphene::protocol::asset_store);
+FC_COMPLETE_INTERNAL_REFLECTION(graphene::protocol::asset_store)

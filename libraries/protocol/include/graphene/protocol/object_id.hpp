@@ -127,7 +127,7 @@ namespace graphene { namespace db {
       explicit operator uint64_t()const { return object_id_type( *this ).number; }
 
       template<typename DB>
-      auto operator()(const DB& db)const -> const decltype(db.get(*this))& { return db.get(*this); }
+      decltype(auto) operator()(const DB& db)const { return db.get(*this); }
 
       friend bool  operator == ( const object_id& a, const object_id& b ) { return a.instance == b.instance; }
       friend bool  operator != ( const object_id& a, const object_id& b ) { return a.instance != b.instance; }

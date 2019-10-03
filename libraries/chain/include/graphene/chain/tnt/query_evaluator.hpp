@@ -35,6 +35,7 @@ template<typename T> using const_ref = std::reference_wrapper<const T>;
 
 struct query_evaluator_impl;
 /// @brief A class to evaluate and apply tank queries
+/// @ingroup TNT
 ///
 /// As with most graphene operations, running queries on a tank or tank accessory involves two main steps: the query
 /// evaluation, which checks whether the query is valid, and application, which applies the requisite changes to the

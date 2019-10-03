@@ -24,6 +24,7 @@
 
 #include <graphene/chain/tnt/evaluators.hpp>
 #include <graphene/chain/tnt/object.hpp>
+#include <graphene/chain/tnt/cow_db_wrapper.hpp>
 #include <graphene/chain/database.hpp>
 #include <graphene/chain/hardfork.hpp>
 
@@ -62,12 +63,11 @@ void_result tank_create_evaluator::do_evaluate(const tank_create_operation& o) {
 
 object_id_type tank_create_evaluator::do_apply(const tank_create_operation& o) {
    auto& d = db();
-   asset_store deposit_paid = asset_store::unchecked_create(o.deposit_amount);
-   d.adjust_balance(o.payer, -deposit_paid.stored_asset());
-   return d.create<tank_object>([&schema = new_tank, &deposit_paid](tank_object& tank) {
+   d.adjust_balance(o.payer, -o.deposit_amount);
+   return d.create<tank_object>([&schema = new_tank, &o](tank_object& tank) {
       tank.schematic = std::move(schema);
-      tank.balance = asset_store(schema.asset_type);
-      deposit_paid.to(tank.deposit);
+      tank.balance.asset_id = schema.asset_type;
+      tank.deposit = o.deposit_amount;
       tank.restrictor_ID = tank.schematic.get_deposit_source_restrictor();
    }).id;
 }
@@ -87,7 +87,7 @@ void_result tank_update_evaluator::do_evaluate(const tank_update_evaluator::oper
    validator.validate_tank();
 
    auto new_deposit = validator.calculate_deposit(*tnt_parameters);
-   FC_ASSERT(old_tank->deposit.amount() - new_deposit == o.deposit_delta, "Incorrect deposit delta");
+   FC_ASSERT(old_tank->deposit - new_deposit == o.deposit_delta, "Incorrect deposit delta");
    if (o.deposit_delta > 0)
       FC_ASSERT(d.get_balance(o.payer, asset_id_type()).amount >= o.deposit_delta,
                 "Insufficient balance to pay the deposit");
@@ -101,11 +101,7 @@ void_result tank_update_evaluator::do_apply(const tank_update_evaluator::operati
       d.adjust_balance(o.payer, o.deposit_delta);
    d.modify(*old_tank, [&schema = updated_tank, &o](tank_object& tank) {
       tank.schematic = std::move(schema);
-
-      if (o.deposit_delta > 0)
-         asset_store::unchecked_create(o.deposit_delta).to(tank.deposit);
-      else if (o.deposit_delta < 0)
-         tank.deposit.move(-o.deposit_delta).unchecked_destroy();
+      tank.deposit += o.deposit_delta;
 
       for (auto id : o.attachments_to_remove)
          tank.clear_attachment_state(id);
@@ -127,8 +123,8 @@ void_result tank_delete_evaluator::do_evaluate(const tank_delete_evaluator::oper
    old_tank = &o.tank_to_delete(d);
    FC_ASSERT(o.delete_authority == *old_tank->schematic.taps.at(0).open_authority,
              "Tank update authority is incorrect");
-   FC_ASSERT(old_tank->balance.empty(), "Cannot delete a tank with an outstanding balance");
-   FC_ASSERT(o.deposit_claimed == old_tank->deposit.amount(), "Incorrect deposit amount");
+   FC_ASSERT(old_tank->balance.amount == 0, "Cannot delete a tank with an outstanding balance");
+   FC_ASSERT(o.deposit_claimed == old_tank->deposit, "Incorrect deposit amount");
 
    return {};
 }

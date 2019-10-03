@@ -43,7 +43,6 @@ using accessory_state_map = flat_map<stateful_accessory_address, tnt::tank_acces
 /// @brief An asset storage container which is the core of Tanks and Taps, a framework for general smart contract
 /// asset management
 /// @ingroup object
-/// @ingroup implementation
 /// @ingroup TNT
 ///
 /// This is the database object for the Tanks and Taps asset management framework. It represents a tank and tracks
@@ -56,9 +55,9 @@ public:
    /// The schematic of the tank
    tnt::tank_schematic schematic;
    /// The balance of the tank
-   asset_store balance;
+   asset balance;
    /// The deposit being held for this tank
-   asset_store deposit;
+   share_type deposit;
 
    /// Storage of tank accessories' states
    accessory_state_map accessory_states;
@@ -116,10 +115,20 @@ public:
    void clear_attachment_state(tnt::index_type attachment_ID);
 };
 
+using tank_object_index_type = multi_index_container<
+   tank_object,
+   indexed_by<
+      ordered_unique<tag<by_id>, member<object, object_id_type, &object::id>>
+   >
+>;
+using tank_index = generic_index<tank_object, tank_object_index_type>;
+
 } } // namespace graphene::chain
 
 MAP_OBJECT_ID_TO_TYPE(graphene::chain::tank_object)
 
 GRAPHENE_DECLARE_EXTERNAL_SERIALIZATION(graphene::chain::tank_object)
 
+// This reflection information cannot be moved to the .cpp file as with the other objects, because it must be visible
+// to the evaluation code.
 FC_REFLECT(graphene::chain::tank_object, (schematic)(balance)(accessory_states)(restrictor_ID))
