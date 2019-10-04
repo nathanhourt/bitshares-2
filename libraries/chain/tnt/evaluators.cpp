@@ -66,7 +66,6 @@ object_id_type tank_create_evaluator::do_apply(const tank_create_operation& o) {
    d.adjust_balance(o.payer, -o.deposit_amount);
    return d.create<tank_object>([&schema = new_tank, &o](tank_object& tank) {
       tank.schematic = std::move(schema);
-      tank.balance.asset_id = schema.asset_type;
       tank.deposit = o.deposit_amount;
       tank.restrictor_ID = tank.schematic.get_deposit_source_restrictor();
    }).id;
@@ -123,7 +122,7 @@ void_result tank_delete_evaluator::do_evaluate(const tank_delete_evaluator::oper
    old_tank = &o.tank_to_delete(d);
    FC_ASSERT(o.delete_authority == *old_tank->schematic.taps.at(0).open_authority,
              "Tank update authority is incorrect");
-   FC_ASSERT(old_tank->balance.amount == 0, "Cannot delete a tank with an outstanding balance");
+   FC_ASSERT(old_tank->balance == 0, "Cannot delete a tank with an outstanding balance");
    FC_ASSERT(o.deposit_claimed == old_tank->deposit, "Incorrect deposit amount");
 
    return {};

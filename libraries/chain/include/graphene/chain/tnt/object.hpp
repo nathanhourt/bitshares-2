@@ -54,9 +54,9 @@ public:
 
    /// The schematic of the tank
    tnt::tank_schematic schematic;
-   /// The balance of the tank
-   asset balance;
-   /// The deposit being held for this tank
+   /// The balance of the tank (asset id is in the schematic)
+   share_type balance;
+   /// The deposit being held for this tank (deposit is always CORE asset)
    share_type deposit;
 
    /// Storage of tank accessories' states

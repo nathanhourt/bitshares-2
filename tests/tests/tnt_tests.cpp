@@ -34,32 +34,36 @@ using namespace graphene::chain::test;
 
 BOOST_AUTO_TEST_SUITE(tnt_tests)
 
+// This test is a basic exercise of the cow_db_wrapper, to check reading, writing, and committing changes to the db
 BOOST_FIXTURE_TEST_CASE(cow_db_wrapper_test, database_fixture) { try {
    cow_db_wrapper wrapper(db);
-   tank_id_type tank_id = db.create<tank_object>([](tank_object&) {}).id;
+   tank_id_type tank_id = db.create<tank_object>([](tank_object& t) {t.balance = 5;}).id;
    auto tank_wrapper = tank_id(wrapper);
 
+   // Check read of wrapped values
+   BOOST_CHECK_EQUAL(tank_wrapper.balance().value, 5);
+
    // Modify the wrapped object
-   tank_wrapper.balance().amount = 100;
+   tank_wrapper.balance().value = 100;
    tank_wrapper.schematic().taps[0] = ptnt::tap();
 
    // Check the modifications stuck
-   BOOST_CHECK_EQUAL(tank_wrapper.balance().amount().value(), 100);
+   BOOST_CHECK_EQUAL(tank_wrapper.balance().value, 100);
    BOOST_CHECK_EQUAL(tank_wrapper.schematic().taps().size(), 1);
    BOOST_CHECK_EQUAL(tank_wrapper.schematic().taps().count(0), 1);
 
    // Check the modifications are held across other objects taken from the db wrapper
-   BOOST_CHECK_EQUAL(tank_id(wrapper).balance().amount().value, 100);
+   BOOST_CHECK_EQUAL(tank_id(wrapper).balance().value, 100);
    BOOST_CHECK_EQUAL(tank_id(wrapper).schematic().taps().size(), 1);
    BOOST_CHECK_EQUAL(tank_id(wrapper).schematic().taps().count(0), 1);
 
    // Check the modifications have not applied to the database object
-   BOOST_CHECK_EQUAL(tank_id(db).balance.amount.value, 0);
+   BOOST_CHECK_EQUAL(tank_id(db).balance.value, 5);
    BOOST_CHECK_EQUAL(tank_id(db).schematic.taps.size(), 0);
 
    // Commit the changes, and check that they are reflected in the database
    wrapper.commit(db);
-   BOOST_CHECK_EQUAL(tank_id(db).balance.amount.value, 100);
+   BOOST_CHECK_EQUAL(tank_id(db).balance.value, 100);
    BOOST_CHECK_EQUAL(tank_id(db).schematic.taps.size(), 1);
    BOOST_CHECK_EQUAL(tank_id(db).schematic.taps.count(0), 1);
 } FC_LOG_AND_RETHROW() }
