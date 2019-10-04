@@ -87,9 +87,13 @@ struct internal_requirement_checker {
    }
    void operator()(const periodic_flow_limit& req) const {
       FC_ASSERT(req.limit > 0, "Periodic flow limit must be positive");
+      FC_ASSERT(req.period_duration_sec > 0, "Periodic flow limit period must be positive");
    }
    void operator()(const time_lock& req) const {
       FC_ASSERT(!req.lock_unlock_times.empty(), "Time lock must specify at least one lock/unlock time");
+      for (size_t i = 1; i < req.lock_unlock_times.size(); ++i)
+         FC_ASSERT(req.lock_unlock_times[i-1] < req.lock_unlock_times[i],
+                   "Time lock times must be unique and strictly increasing");
    }
    void operator()(const minimum_tank_level& req) const {
       FC_ASSERT(req.minimum_level > 0, "Minimum tank level must be positive");
@@ -284,12 +288,10 @@ void tank_validator::validate_tap_requirement(index_type tap_id, index_type requ
       }
       void operator()(const cumulative_flow_limit& req) {
          internal_requirement_checker()(req);
-         check_meter(req.meter_id, "Cumulative flow limit", validator.current_tank.asset_type);
          ++validator.requirement_counters[tap_requirement::tag<cumulative_flow_limit>::value];
       }
       void operator()(const periodic_flow_limit& req) {
          internal_requirement_checker()(req);
-         check_meter(req.meter_id, "Periodic flow limit", validator.current_tank.asset_type);
          ++validator.requirement_counters[tap_requirement::tag<periodic_flow_limit>::value];
       }
       void operator()(const time_lock& req) {

@@ -195,6 +195,8 @@ public:
    template<typename T>
    using cow_object = fc::object_reflection<const T, impl::cow_refletion_data, impl::cow_field_reflection>;
 
+   const database& get_db() const { return db; }
+
    template<typename T>
    cow_object<T> get(object_id_type id) const {
       decltype(pensive_cattle)::iterator itr = pensive_cattle.find(id);

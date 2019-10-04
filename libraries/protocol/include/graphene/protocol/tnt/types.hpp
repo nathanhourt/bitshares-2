@@ -123,6 +123,16 @@ struct sink_eq {
 struct unlimited_flow{};
 /// A limit to the amount of asset that flows during a release of asset; either unlimited, or a maximum amount
 using asset_flow_limit = static_variant<unlimited_flow, share_type>;
+inline bool operator< (const asset_flow_limit& a, const asset_flow_limit& b) {
+   if (a.is_type<unlimited_flow>()) return false;
+   if (b.is_type<unlimited_flow>()) return true;
+   return a.get<share_type>() < b.get<share_type>();
+}
+inline bool operator<=(const asset_flow_limit& a, const asset_flow_limit& b) {
+   if (b.is_type<unlimited_flow>()) return true;
+   if (a.is_type<unlimited_flow>()) return false;
+   return a.get<share_type>() <= b.get<share_type>();
+}
 
 /// @name Attachments
 /// Tank Attachments are objects which can be attached to a tank to provide additional functionality. For instance,
@@ -241,8 +251,10 @@ struct immediate_flow_limit {
 struct cumulative_flow_limit {
    constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = true;
-   /// Meter tracking the cumulative flow through this tap
-   attachment_id_type meter_id;
+   struct state_type {
+      /// The amount of asset released so far
+      share_type amount_released;
+   };
    /// Limit amount
    share_type limit;
 };
@@ -252,13 +264,13 @@ struct periodic_flow_limit {
    constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = false;
    struct state_type {
-      /// When the limit was created, and thus, when the first period began
-      time_point_sec creation_date;
+      /// Sequence number of the period during which the last withdrawal took place
+      uint32_t period_num = 0;
+      /// The amount released during the period
+      share_type amount_released;
    };
-   /// Duration of periods in seconds
+   /// Duration of periods in seconds; the first period begins at the tank's creation date
    uint32_t period_duration_sec = 0;
-   /// Meter tracking the total amount released; this will be reset when the period rolls over
-   attachment_id_type meter_id;
    /// Maximum cumulative amount to release in a given period
    share_type limit;
 };
@@ -267,10 +279,12 @@ struct periodic_flow_limit {
 struct time_lock {
    constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = true;
-   /// If true, the tap is initially locked
+   /// Whether or not the tap is locked before the first lock/unlock time
    bool start_locked = false;
    /// At each of these times, the tap will switch between locked and unlocked -- must all be in the future
    vector<time_point_sec> lock_unlock_times;
+
+   bool unlocked_at_time(const time_point_sec& time) const;
 };
 
 /// Prevents tap from draining tank to below a specfied balance
@@ -399,6 +413,10 @@ struct exchange_requirement {
    share_type tick_amount;
    /// Authority which can reset the amount released; if null, only the emergency tap authority is authorized
    fc::optional<authority> reset_authority;
+
+   share_type max_release_amount(share_type amount_released, const asset_flow_meter::state_type& meter_state) const {
+      return meter_state.metered_amount / tick_amount * release_per_tick - amount_released;
+   }
 };
 /// @}
 
@@ -466,9 +484,10 @@ FC_REFLECT(graphene::protocol::tnt::tap_opener, (tap_index)(release_amount)(dest
 FC_REFLECT(graphene::protocol::tnt::attachment_connect_authority, (connect_authority)(attachment_id))
 
 FC_REFLECT(graphene::protocol::tnt::immediate_flow_limit, (limit))
-FC_REFLECT(graphene::protocol::tnt::cumulative_flow_limit, (meter_id)(limit))
-FC_REFLECT(graphene::protocol::tnt::periodic_flow_limit::state_type, (creation_date))
-FC_REFLECT(graphene::protocol::tnt::periodic_flow_limit, (period_duration_sec)(meter_id)(limit))
+FC_REFLECT(graphene::protocol::tnt::cumulative_flow_limit::state_type, (amount_released))
+FC_REFLECT(graphene::protocol::tnt::cumulative_flow_limit, (limit))
+FC_REFLECT(graphene::protocol::tnt::periodic_flow_limit::state_type, (period_num)(amount_released))
+FC_REFLECT(graphene::protocol::tnt::periodic_flow_limit, (period_duration_sec)(limit))
 FC_REFLECT(graphene::protocol::tnt::time_lock, (start_locked)(lock_unlock_times))
 FC_REFLECT(graphene::protocol::tnt::minimum_tank_level, (minimum_level))
 FC_REFLECT(graphene::protocol::tnt::review_requirement::request_type,

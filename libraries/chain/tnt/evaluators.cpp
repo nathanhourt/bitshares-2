@@ -64,9 +64,10 @@ void_result tank_create_evaluator::do_evaluate(const tank_create_operation& o) {
 object_id_type tank_create_evaluator::do_apply(const tank_create_operation& o) {
    auto& d = db();
    d.adjust_balance(o.payer, -o.deposit_amount);
-   return d.create<tank_object>([&schema = new_tank, &o](tank_object& tank) {
+   return d.create<tank_object>([&schema = new_tank, &o, now=d.head_block_time()](tank_object& tank) {
       tank.schematic = std::move(schema);
       tank.deposit = o.deposit_amount;
+      tank.creation_date = now;
       tank.restrictor_ID = tank.schematic.get_deposit_source_restrictor();
    }).id;
 }

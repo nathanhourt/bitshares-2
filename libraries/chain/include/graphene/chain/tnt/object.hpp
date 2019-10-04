@@ -58,6 +58,8 @@ public:
    share_type balance;
    /// The deposit being held for this tank (deposit is always CORE asset)
    share_type deposit;
+   /// Time of the tank's creation
+   time_point_sec creation_date;
 
    /// Storage of tank accessories' states
    accessory_state_map accessory_states;
@@ -131,4 +133,5 @@ GRAPHENE_DECLARE_EXTERNAL_SERIALIZATION(graphene::chain::tank_object)
 
 // This reflection information cannot be moved to the .cpp file as with the other objects, because it must be visible
 // to the evaluation code.
-FC_REFLECT(graphene::chain::tank_object, (schematic)(balance)(accessory_states)(restrictor_ID))
+FC_REFLECT(graphene::chain::tank_object,
+           (schematic)(balance)(deposit)(creation_date)(accessory_states)(restrictor_ID))

@@ -172,6 +172,17 @@ const {
    return {};
 }
 
+bool time_lock::unlocked_at_time(const fc::time_point_sec& time) const {
+   auto first_future_time = std::find_if_not(lock_unlock_times.begin(), lock_unlock_times.end(),
+                                             [&time](const time_point_sec& t) { return t < time; });
+   auto switch_count = first_future_time - lock_unlock_times.begin();
+   // If the lock has switched an even number of times, it's the same now as it was when it started
+   if (switch_count % 2)
+      return !start_locked;
+   // It's switched an odd number of times, so it's unlocked now if it started locked
+   return start_locked;
+}
+
 template<typename L, typename R>
 struct sink_eq_impl {
    const sink_eq& q;
