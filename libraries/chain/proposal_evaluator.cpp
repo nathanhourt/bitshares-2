@@ -42,6 +42,10 @@ struct proposal_operation_hardfork_visitor
    void operator()(const T &v) const {}
 
    // TODO review and cleanup code below after hard fork
+   // hf_1604
+   void operator()(const graphene::chain::limit_order_update_operation &) const {
+      FC_ASSERT(block_time > HARDFORK_CORE_1604_TIME, "Operation is not enabled yet");
+   }
    // hf_834
    void operator()(const graphene::chain::call_order_update_operation &v) const {
       if (next_maintenance_time <= HARDFORK_CORE_834_TIME) {
@@ -91,6 +95,11 @@ struct proposal_operation_hardfork_visitor
       if (block_time > HARDFORK_CORE_588_TIME) {
          FC_ASSERT(!"Virtual operation");
       }
+   }
+   void operator()(const graphene::chain::committee_member_update_global_parameters_operation &op) const {
+       if (block_time < HARDFORK_CORE_1604_TIME)
+           FC_ASSERT(!op.new_parameters.current_fees->exists<graphene::chain::limit_order_update_operation>(),
+                     "Cannot set fees for limit_order_update_operation before its hardfork time");
    }
    // loop and self visit in proposals
    void operator()(const graphene::chain::proposal_create_operation &v) const {
