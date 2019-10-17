@@ -148,6 +148,23 @@ struct cow_field_reflection {
 };
 } // namespace impl
 
+template<typename T>
+struct cow_object : fc::object_reflection<const T, impl::cow_refletion_data, impl::cow_field_reflection> {
+   cow_object(const T& ref, impl::cow_refletion_data* data)
+      : fc::object_reflection<const T, impl::cow_refletion_data, impl::cow_field_reflection>(ref, data) {}
+
+   operator T&() {
+      if (!this->_data_->written)
+         this->_data_->written = this->_data_->db.get_object(this->_data_->object_id).clone();
+      return this->_data_->template get_written<T>();
+   }
+   operator const T&() const {
+      if (!this->_data_->written)
+         return this->_data_->template get_written<T>();
+      return this->_ref_;
+   }
+};
+
 /**
  * @brief A wrapper of chain::database which returns writeable objects with copy-on-write logic and the ability to
  * commit all writes to the database later on
@@ -191,9 +208,6 @@ class cow_db_wrapper {
 
 public:
    cow_db_wrapper(const database& wrapped_db) : db(wrapped_db) {}
-
-   template<typename T>
-   using cow_object = fc::object_reflection<const T, impl::cow_refletion_data, impl::cow_field_reflection>;
 
    const database& get_db() const { return db; }
 

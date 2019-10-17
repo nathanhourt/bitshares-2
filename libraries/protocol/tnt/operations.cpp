@@ -93,14 +93,34 @@ share_type tank_query_operation::calculate_fee(const fee_parameters_type& params
    return params.base_fee + (fc::raw::pack_size(*this) * params.price_per_byte);
 }
 
+struct unique_query_checker {
+   std::map<size_t, std::set<tnt::tank_accessory_address_type, tnt::accessory_address_lt<>>> unique_queries;
+
+   bool operator()(const tnt::targeted_query<tnt::queries::documentation_string>&) { return true; }
+   template<typename Q>
+   bool operator()(const tnt::targeted_query<Q>& q) {
+      size_t query_tag = tnt::TL::index_of<tnt::query_type_list, Q>();
+      auto& address_set = unique_queries[query_tag];
+      auto hint = address_set.lower_bound(q.accessory_address);
+      if (hint != address_set.end() && *hint == q.accessory_address)
+         return false;
+      address_set.insert(hint, q.accessory_address);
+      return true;
+   }
+};
+
 void validate_queries(const vector<tnt::tank_query_type>& queries, const tank_id_type& queried_tank, bool tap_open) {
+   unique_query_checker is_unique;
    for (const auto& query : queries) {
-      query.visit([tap_open](const auto& q) {
+      query.visit([&is_unique, tap_open](const auto& q) {
          q.query_content.validate();
          using query_type = typename std::decay_t<decltype(q)>::query_type;
          if (query_type::tap_open_only)
             FC_ASSERT(tap_open, "${Q} may only be used in tap_open_operation, not tank_query_operations",
                       ("Q", fc::get_typename<query_type>::name()));
+         if (query_type::unique)
+            FC_ASSERT(is_unique(q), "Cannot run multiple ${T} queries against the same target in the same operation",
+                      ("T", fc::get_typename<query_type>::name()));
       });
 
       // Dirty, but I couldn't think of a simpler way to check this

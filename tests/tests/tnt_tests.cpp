@@ -51,11 +51,17 @@ BOOST_FIXTURE_TEST_CASE(cow_db_wrapper_test, database_fixture) { try {
    BOOST_CHECK_EQUAL(tank_wrapper.balance().value, 100);
    BOOST_CHECK_EQUAL(tank_wrapper.schematic().taps().size(), 1);
    BOOST_CHECK_EQUAL(tank_wrapper.schematic().taps().count(0), 1);
+   BOOST_CHECK_EQUAL(((const tank_object&)(tank_wrapper)).balance.value, 100);
+   BOOST_CHECK_EQUAL(((const tank_object&)(tank_wrapper)).schematic.taps.size(), 1);
+   BOOST_CHECK_EQUAL(((const tank_object&)(tank_wrapper)).schematic.taps.count(0), 1);
 
    // Check the modifications are held across other objects taken from the db wrapper
    BOOST_CHECK_EQUAL(tank_id(wrapper).balance().value, 100);
    BOOST_CHECK_EQUAL(tank_id(wrapper).schematic().taps().size(), 1);
    BOOST_CHECK_EQUAL(tank_id(wrapper).schematic().taps().count(0), 1);
+   BOOST_CHECK_EQUAL(((const tank_object&)(tank_id(wrapper))).balance.value, 100);
+   BOOST_CHECK_EQUAL(((const tank_object&)(tank_id(wrapper))).schematic.taps.size(), 1);
+   BOOST_CHECK_EQUAL(((const tank_object&)(tank_id(wrapper))).schematic.taps.count(0), 1);
 
    // Check the modifications have not applied to the database object
    BOOST_CHECK_EQUAL(tank_id(db).balance.value, 5);

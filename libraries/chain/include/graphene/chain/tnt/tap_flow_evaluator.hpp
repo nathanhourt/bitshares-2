@@ -27,10 +27,7 @@
 #include <graphene/chain/tnt/query_evaluator.hpp>
 #include <graphene/chain/tnt/cow_db_wrapper.hpp>
 
-namespace graphene { namespace chain {
-class database;
-namespace ptnt = protocol::tnt;
-namespace tnt {
+namespace graphene { namespace chain { namespace tnt {
 struct tap_flow_evaluator_impl;
 
 /// A report of the results of a tap flow evaluation
@@ -88,19 +85,6 @@ public:
                                      ptnt::tap_id_type tap_to_open, ptnt::asset_flow_limit flow_amount,
                                      int max_taps_to_open);
 
-   /**
-    * @brief Evaluate a tap's requirements to determine the maximum amount that can be released from the tap
-    * @param db The database
-    * @param tank The tank with the tap to evaluate
-    * @param tap_ID The ID of the tap to evaluate
-    * @param queries The queries which have been evaluated (some tap requirements need certain queries to have been
-    * run within the same operation that opens the tap)
-    * @return The index of the requirement with the lowest release limit, and that requirement's release limit. If
-    * the index is null, the limit is the tank's balance.
-    */
-   pair<optional<size_t>, ptnt::asset_flow_limit> max_tap_release(const database& db, const tank_object& tank,
-                                                                  const protocol::tnt::index_type& tap_ID,
-                                                                  const query_evaluator& queries);
 };
 
 } } } // namespace graphene::chain::tnt

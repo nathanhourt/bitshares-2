@@ -273,6 +273,10 @@ struct periodic_flow_limit {
    uint32_t period_duration_sec = 0;
    /// Maximum cumulative amount to release in a given period
    share_type limit;
+
+   uint32_t period_num_at_time(const time_point_sec& creation_date, const time_point_sec& time) const {
+      return uint32_t((time - creation_date).to_seconds() / period_duration_sec);
+   }
 };
 
 /// Locks and unlocks the tap at specified times
@@ -284,6 +288,7 @@ struct time_lock {
    /// At each of these times, the tap will switch between locked and unlocked -- must all be in the future
    vector<time_point_sec> lock_unlock_times;
 
+   /// Check whether the time_lock is unlocked at the provided time
    bool unlocked_at_time(const time_point_sec& time) const;
 };
 

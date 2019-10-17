@@ -49,6 +49,8 @@ struct tank_accessory_address<Attachment, std::enable_if_t<tank_attachment::can_
       } FC_CAPTURE_AND_RETHROW((*this))
    }
 
+   bool operator==(const tank_accessory_address& other) const { return attachment_ID == other.attachment_ID; }
+
    FC_REFLECT_INTERNAL(tank_accessory_address, (attachment_ID))
 };
 template<typename Requirement>
@@ -71,8 +73,15 @@ struct tank_accessory_address<Requirement, std::enable_if_t<tap_requirement::can
       return tp.requirements[requirement_index].template get<Requirement>();
    }
 
+   bool operator==(const tank_accessory_address& other) const {
+      return tap_ID == other.tap_ID && requirement_index == other.requirement_index;
+   }
+
    FC_REFLECT_INTERNAL(tank_accessory_address, (tap_ID)(requirement_index))
 };
+
+template<typename AccA, typename AccB, typename = std::enable_if_t<!std::is_same<AccA, AccB>::value>>
+bool operator==(const tank_accessory_address<AccA>&, const tank_accessory_address<AccB>&) { return false; }
 
 using tank_accessory_address_type = TL::apply<TL::apply_each<tank_accessory_list, tank_accessory_address>,
                                               static_variant>;

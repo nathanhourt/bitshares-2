@@ -36,7 +36,8 @@ namespace graphene { namespace protocol { namespace tnt {
 ///
 /// All queries specify a target type, which is the particular accessory type they pertain to. If a query pertains to
 /// the tank in general, its target type should be @ref tank_query. All queries also provide a tap_open_only boolean,
-/// which is true if the query must only be used in a tap_open_operation and not a tank_query_operation
+/// which is true if the query must only be used in a tap_open_operation and not a tank_query_operation; and a unique
+/// boolean, which is true if the query type may only be executed once per target in a given operation
 ///
 /// All queries must be declared in this file. Query implementation logic is defined in the chain library.
 /// @{
@@ -50,6 +51,7 @@ namespace queries {
 struct reset_meter {
    using target_type = asset_flow_meter;
    constexpr static bool tap_open_only = false;
+   constexpr static bool unique = true;
    // No arguments
 
    void validate() const {}
@@ -59,6 +61,7 @@ struct reset_meter {
 struct reconnect_attachment {
    using target_type = attachment_connect_authority;
    constexpr static bool tap_open_only = false;
+   constexpr static bool unique = true;
 
    /// The new sink to connect the attachment to
    sink new_sink;
@@ -70,6 +73,7 @@ struct reconnect_attachment {
 struct create_request_for_review {
    using target_type = review_requirement;
    constexpr static bool tap_open_only = false;
+   constexpr static bool unique = false;
 
    /// The amount being requested to release through the tap
    asset_flow_limit request_amount;
@@ -90,6 +94,7 @@ struct create_request_for_review {
 struct review_request_to_open {
    using target_type = review_requirement;
    constexpr static bool tap_open_only = false;
+   constexpr static bool unique = false;
 
    /// ID of the request being reviewed
    index_type request_ID;
@@ -110,6 +115,7 @@ struct review_request_to_open {
 struct cancel_request_for_review {
    using target_type = review_requirement;
    constexpr static bool tap_open_only = false;
+   constexpr static bool unique = false;
 
    /// ID of the request to cancel
    index_type request_ID;
@@ -128,6 +134,7 @@ struct cancel_request_for_review {
 struct consume_approved_request_to_open {
    using target_type = review_requirement;
    constexpr static bool tap_open_only = true;
+   constexpr static bool unique = false;
 
    /// ID of the request to consume
    index_type request_ID;
@@ -140,6 +147,7 @@ struct documentation_string {
    // Documentation is always allowed, even if there is no documentation_requirement, so target the tank itself
    using target_type = tank_query;
    constexpr static bool tap_open_only = false;
+   constexpr static bool unique = false;
 
    /// The documented reason for action; max 150 chars
    string reason;
@@ -154,6 +162,7 @@ struct documentation_string {
 struct create_request_for_delay {
    using target_type = delay_requirement;
    constexpr static bool tap_open_only = false;
+   constexpr static bool unique = false;
 
    /// The amount being requested to release through the tap
    asset_flow_limit request_amount;
@@ -174,6 +183,7 @@ struct create_request_for_delay {
 struct veto_request_in_delay {
    using target_type = delay_requirement;
    constexpr static bool tap_open_only = false;
+   constexpr static bool unique = false;
 
    /// ID of the request to veto
    index_type request_ID;
@@ -192,6 +202,7 @@ struct veto_request_in_delay {
 struct cancel_request_in_delay {
    using target_type = delay_requirement;
    constexpr static bool tap_open_only = false;
+   constexpr static bool unique = false;
 
    /// ID of the request to cancel
    index_type request_ID;
@@ -210,6 +221,7 @@ struct cancel_request_in_delay {
 struct consume_matured_request_to_open {
    using target_type = delay_requirement;
    constexpr static bool tap_open_only = true;
+   constexpr static bool unique = false;
 
    /// ID of the request to consume
    index_type request_ID;
@@ -221,6 +233,7 @@ struct consume_matured_request_to_open {
 struct reveal_hash_preimage {
    using target_type = hash_preimage_requirement;
    constexpr static bool tap_open_only = true;
+   constexpr static bool unique = true;
 
    /// Preimage of the hash
    vector<char> preimage;
@@ -234,6 +247,7 @@ struct reveal_hash_preimage {
 struct redeem_ticket_to_open {
    using target_type = ticket_requirement;
    constexpr static bool tap_open_only = true;
+   constexpr static bool unique = true;
 
    /// The ticket being redeemed
    ticket_requirement::ticket_type ticket;
@@ -252,6 +266,7 @@ struct redeem_ticket_to_open {
 struct reset_exchange_requirement {
    using target_type = exchange_requirement;
    constexpr static bool tap_open_only = false;
+   constexpr static bool unique = true;
    // No arguments
 
    void validate() const {}
