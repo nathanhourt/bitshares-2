@@ -37,7 +37,7 @@ struct tap_flow_report {
       /// The amount released from the tap
       asset amount_released;
       /// The ID of the tap that released asset
-      ptnt::index_type source_tap;
+      ptnt::tap_id_type source_tap;
       /// The path of the tap flow, beginning with the source tank
       vector<ptnt::sink> flow_path;
    };
