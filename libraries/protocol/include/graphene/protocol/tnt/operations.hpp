@@ -243,7 +243,7 @@ struct sink_fund_account_operation : public base_operation {
    account_id_type receiving_account;
    /// The amount received
    asset amount_received;
-   /// The path of sinks the asset took to arrive at the account
+   /// The path of sinks the asset took to arrive at the account, including the origin
    vector<tnt::sink> asset_path;
 
    extensions_type extensions;

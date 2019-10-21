@@ -26,11 +26,10 @@
 #include <graphene/chain/database.hpp>
 
 namespace graphene { namespace chain {
-namespace ptnt = protocol::tnt;
 
 namespace impl {
 template<typename...> using make_void = void;
-namespace TL = ptnt::TL;
+namespace TL = fc::typelist;
 
 struct cow_refletion_data {
    const database& db;
@@ -88,7 +87,7 @@ template<typename Reflectors, typename Root = typename TL::first<Reflectors>::co
          typename Field = typename TL::last<Reflectors>::type,
          std::enable_if_t<TL::length<Reflectors>() != 1, bool> = true>
 auto make_getter() {
-   return [inner = make_getter<ptnt::TL::slice<Reflectors, 1>>()](Root& root) -> Field& {
+   return [inner = make_getter<TL::slice<Reflectors, 1>>()](Root& root) -> Field& {
       return inner(TL::first<Reflectors>::get(root));
    };
 }

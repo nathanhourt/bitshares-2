@@ -47,6 +47,7 @@ class tank_update_evaluator : public evaluator<tank_update_evaluator> {
    void_result do_apply(const operation_type& o);
 
    const tank_object* old_tank = nullptr;
+   fc::optional<ptnt::index_type> new_restrictor_ID;
    ptnt::tank_schematic updated_tank;
 };
 

@@ -23,12 +23,15 @@
  */
 #include <graphene/chain/tnt/tap_flow_evaluator.hpp>
 #include <graphene/chain/tnt/tap_requirement_utility.hpp>
+#include <graphene/chain/tnt/sink_flow_processor.hpp>
+#include <graphene/chain/is_authorized_asset.hpp>
 
 #include <queue>
 
 namespace graphene { namespace chain { namespace tnt {
 
 struct tap_flow_evaluator_impl {
+   std::unique_ptr<sink_flow_processor> flow_processor;
    tap_flow_report report;
 
    void require_authority(const tank_id_type& tank_id, const authority& auth) {
@@ -36,113 +39,22 @@ struct tap_flow_evaluator_impl {
       if (std::find(auths.begin(), auths.end(), auth) == auths.end())
          auths.push_back(auth);
    }
+   sink_flow_processor& get_flow_processor(cow_db_wrapper& db, TapOpenCallback cb_open, FundAccountCallback cb_fund) {
+      if (!flow_processor)
+         flow_processor = std::make_unique<sink_flow_processor>(db, cb_open, cb_fund);
+      return *flow_processor;
+   }
 };
 
 tap_flow_evaluator::tap_flow_evaluator() {
    my = std::make_unique<tap_flow_evaluator_impl>();
 }
 
-template<typename EnqueueTapCallback>
-class attachment_receive_inspector {
-   tank_object& tank;
-   const asset& amount;
-   const EnqueueTapCallback& enqueueTap;
-   attachment_receive_inspector(tank_object& tank, const asset& amount, const EnqueueTapCallback& enqueueTap)
-      : tank(tank), amount(amount), enqueueTap(enqueueTap) {}
-
-   using NonReceivingAttachments =
-      ptnt::TL::list<ptnt::deposit_source_restrictor, ptnt::attachment_connect_authority>;
-   template<typename Attachment,
-            std::enable_if_t<ptnt::TL::contains<NonReceivingAttachments, Attachment>(), bool> = true>
-   [[noreturn]] ptnt::sink operator()(const Attachment&, ptnt::tank_accessory_address<Attachment>) {
-      FC_THROW_EXCEPTION(fc::assert_exception, "INTERNAL ERROR: Tried to flow asset to an attachment which cannot "
-                                               "receive asset. Please report this error.");
-   }
-
-   ptnt::sink operator()(const ptnt::asset_flow_meter& meter,
-                         ptnt::tank_accessory_address<ptnt::asset_flow_meter> address) {
-      FC_ASSERT(meter.asset_type == amount.asset_id,
-                "Flowed wrong type of asset to flow meter. Meter expects ${O} but received ${A}",
-                ("O", meter.asset_type)("A", amount.asset_id));
-      auto& state = tank.get_or_create_state(address);
-      state.metered_amount += amount.amount;
-      return meter.destination_sink;
-   }
-   ptnt::sink operator()(const ptnt::tap_opener& opener,
-                         ptnt::tank_accessory_address<ptnt::tap_opener>) {
-      FC_ASSERT(opener.asset_type == amount.asset_id,
-                "Flowed wrong type of asset to tap opener. Opener expects ${O} but received ${A}",
-                ("O", opener.asset_type)("A", amount.asset_id));
-      enqueueTap(ptnt::tap_id_type{tank.id, opener.tap_index}, opener.release_amount);
-      return opener.destination_sink;
-   }
-
-public:
-   static ptnt::sink inspect(tank_object& tank, ptnt::index_type attachment_ID, const asset& amount,
-                             const EnqueueTapCallback& enqueueTap) {
-      attachment_receive_inspector inspector(tank, amount, enqueueTap);
-      const auto& attachment = tank.schematic.attachments.at(attachment_ID);
-      return ptnt::TL::runtime::dispatch(ptnt::tank_attachment::list(), attachment.which(),
-                                  [&attachment, attachment_ID, &inspector](auto t) {
-         return inspector(attachment.get<typename decltype(t)::type>(), {attachment_ID});
-      });
-   }
-};
-
-template<typename EnqueueTapCallback>
-tap_flow_report::tap_flow process_tap_flow(cow_db_wrapper& db, ptnt::tap_id_type tap_ID, asset release_amount,
-                                           const EnqueueTapCallback& enqueueTap) {
-   auto tank = db.get(*tap_ID.tank_id);
-   ptnt::sink sink = *tank.schematic().taps().at(tap_ID.tap_id).connected_sink;
-   FC_ASSERT(tap_ID.tank_id.valid(),
-             "INTERNAL ERROR: Attempted to process tap flow, but tap ID has null tank ID. Please report this error.");
-   tank_id_type current_tank = *tap_ID.tank_id;
-   
-   tap_flow_report::tap_flow flow_report;
-   flow_report.source_tap = tap_ID;
-   flow_report.amount_released = release_amount;
-   
-   while (!ptnt::is_terminal_sink(sink)) {
-      auto max_sinks = db.get_db().get_global_properties()
-                       .parameters.extensions.value.updatable_tnt_options->max_sink_chain_length;
-      FC_ASSERT(flow_report.flow_path.size() < max_sinks,
-                "Tap flow has exceeded the maximm sink chain length. Chain: ${SC}",
-                ("SC", flow_report.flow_path));
-
-      // At present, the only non-terminal sink type is a tnak attachment
-      ptnt::attachment_id_type att_id = sink.get<ptnt::attachment_id_type>();
-      if (att_id.tank_id.valid())
-         current_tank = *att_id.tank_id;
-      else
-         att_id.tank_id = current_tank;
-
-      flow_report.flow_path.emplace_back(std::move(sink));
-      sink = attachment_receive_inspector<EnqueueTapCallback>::inspect(current_tank(db), att_id.attachment_id,
-                                                                       release_amount, enqueueTap);
-   }
-
-   if (sink.is_type<ptnt::same_tank>())
-      sink = current_tank;
-   if (sink.is_type<tank_id_type>()) {
-      auto dest_tank = sink.get<tank_id_type>()(db);
-      FC_ASSERT(dest_tank.schematic().asset_type() == release_amount.asset_id,
-                "Destination tank of tap flow stores asset ID ${D}, but tap flow asset ID was ${F}",
-                ("D", dest_tank.schematic().asset_type())("F", release_amount.asset_id));
-      dest_tank.balance = dest_tank.balance() + release_amount.amount;
-   } else if (sink.is_type<account_id_type>()) {
-      // TODO: Check account can hold asset
-      // TODO: Generate virtual operation
-      // TODO: Figure out how to adjust account balance
-   }
-#warning TODO: deposit asset to rest
-
-   flow_report.flow_path.emplace_back(std::move(sink));
-   return flow_report;
-}
-
 tap_flow_report tap_flow_evaluator::evaluate_tap_flow(cow_db_wrapper& db, const query_evaluator& queries,
-                                                      ptnt::tap_id_type tap_to_open,
-                                                      ptnt::asset_flow_limit flow_amount, int max_taps_to_open) {
+                                                      account_id_type account, ptnt::tap_id_type tap_to_open,
+                                                      ptnt::asset_flow_limit flow_amount, int max_taps_to_open,
+                                                      FundAccountCallback fund_account_cb) {
+   const account_object& responsible_account = account(db.get_db());
    std::queue<std::pair<ptnt::tap_id_type, ptnt::asset_flow_limit>> pending_taps;
    pending_taps.push(std::make_pair(tap_to_open, flow_amount));
    auto enqueueTap = [&pending_taps, &report=my->report, &max_taps_to_open](ptnt::tap_id_type id,
@@ -157,14 +69,22 @@ tap_flow_report tap_flow_evaluator::evaluate_tap_flow(cow_db_wrapper& db, const 
       ptnt::asset_flow_limit current_amount = pending_taps.front().second;
 
       // Get tank, check tap exists and fetch it; if it has an open authority, require it -- if not, anyone can open
+      FC_ASSERT(current_tap.tank_id.valid(), "Cannot open tap: tank ID not specified");
       auto tank = db.get(*current_tap.tank_id);
       FC_ASSERT(tank.schematic().taps().count(current_tap.tap_id) != 0, "Tap to open does not exist!");
       const ptnt::tap& tap = tank.schematic().taps().at(current_tap.tap_id);
       if (tap.open_authority.valid())
          my->require_authority(*current_tap.tank_id, *tap.open_authority);
-      tap_requirement_utility util(db, current_tap, queries);
+      FC_ASSERT(tap.connected_sink.valid(), "Cannot open tap ${ID}: tap is not connected to a sink",
+                ("ID", current_tap));
+      // Check the responsible account is authorized to transact the tank's asset
+      const asset_object& tank_asset = tank.schematic().asset_type()(db);
+      FC_ASSERT(is_authorized_asset(db.get_db(), responsible_account, tank_asset),
+                "Cannot open tap: responsible account ${R} is not authorized to transact the tank's asset ${A}",
+                ("R", account)("A", tank_asset.symbol));
 
       // Calculate the max amount the tap's requirements will allow to be released
+      tap_requirement_utility util(db, current_tap, queries);
       auto release_limit = util.max_tap_release();
       auto req_index = util.most_restrictive_requirement_index();
       // Check that the tap is not locked
@@ -189,7 +109,11 @@ tap_flow_report tap_flow_evaluator::evaluate_tap_flow(cow_db_wrapper& db, const 
       // By now, release_limit is the exact amount we will be releasing. Remove it from the tank balance
       tank.balance = tank.balance() - release_limit;
       // Flow the released asset until it stops
-      my->report.tap_flows.emplace_back(process_tap_flow(db, current_tap, release_limit, std::move(enqueueTap)));
+      auto& sink_processor = my->get_flow_processor(db, enqueueTap, fund_account_cb);
+      auto sink_path = sink_processor.release_to_sink(*current_tap.tank_id, *tap.connected_sink, release_limit);
+      // Add flow to report
+      my->report.tap_flows.emplace_back(release_limit, tap_to_open, std::move(sink_path));
+      // Remove the tap from the queue to open
       pending_taps.pop();
    }
 

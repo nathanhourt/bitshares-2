@@ -25,6 +25,10 @@
 #include <graphene/protocol/tnt/operations.hpp>
 #include <graphene/protocol/tnt/validation.hpp>
 
+#include <fc/io/raw.hpp>
+
+#include <boost/range/adaptor/transformed.hpp>
+
 namespace graphene { namespace protocol {
 
 share_type tank_create_operation::calculate_fee(const fee_parameters_type& params) const {
@@ -54,6 +58,23 @@ void tank_update_operation::validate() const {
    FC_ASSERT(!update_authority.is_impossible(), "Update authority must not be impossible authority");
    FC_ASSERT(!(update_authority == authority::null_authority()), "Update authority must not be null");
    FC_ASSERT(update_authority.weight_threshold > 0, "Update authority must not be trivial");
+
+   { // Check no tap IDs are both removed and replaced
+      auto ids_to_replace = boost::adaptors::transform(taps_to_replace, [](const auto& pair) { return pair.first; });
+      std::set<tnt::index_type> remove_and_replace;
+      std::set_intersection(ids_to_replace.begin(), ids_to_replace.end(), taps_to_remove.begin(), taps_to_remove.end(),
+                            std::inserter(remove_and_replace, remove_and_replace.begin()));
+      FC_ASSERT(remove_and_replace.empty(), "Cannot both remove and replace the same tap");
+   }
+   { // Check no attachment IDs are both removed and replaced
+      auto replace_ids = boost::adaptors::transform(attachments_to_replace,
+                                                    [](const auto& pair) { return pair.first; });
+      std::set<tnt::index_type> remove_and_replace;
+      std::set_intersection(replace_ids.begin(), replace_ids.end(),
+                            attachments_to_remove.begin(), attachments_to_remove.end(),
+                            std::inserter(remove_and_replace, remove_and_replace.begin()));
+      FC_ASSERT(remove_and_replace.empty(), "Cannot both remove and replace the same attachment");
+   }
 
    if (taps_to_replace.count(0) > 0) tnt::tank_validator::validate_emergency_tap(taps_to_replace.at(0));
    for (const auto& tap_pair : taps_to_replace) tnt::tank_validator::validate_tap(tap_pair.second);

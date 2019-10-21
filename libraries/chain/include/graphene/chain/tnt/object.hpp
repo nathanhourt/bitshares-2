@@ -31,14 +31,15 @@
 #include <graphene/db/generic_index.hpp>
 
 namespace graphene { namespace chain {
+namespace ptnt = protocol::tnt;
 
 /// Variant capable of containing the address of any stateful accessory
-using stateful_accessory_address = tnt::TL::apply<tnt::TL::apply_each<tnt::stateful_accessory_list,
-                                                                      tnt::tank_accessory_address>, static_variant>;
+using stateful_accessory_address =
+   ptnt::TL::apply<ptnt::TL::apply_each<ptnt::stateful_accessory_list, ptnt::tank_accessory_address>, static_variant>;
 
 /// A map of address to state value for stateful accessory types
-using accessory_state_map = flat_map<stateful_accessory_address, tnt::tank_accessory_state,
-                                     tnt::accessory_address_lt<stateful_accessory_address>>;
+using accessory_state_map = flat_map<stateful_accessory_address, ptnt::tank_accessory_state,
+                                     ptnt::accessory_address_lt<stateful_accessory_address>>;
 
 /// @brief An asset storage container which is the core of Tanks and Taps, a framework for general smart contract
 /// asset management
@@ -53,7 +54,7 @@ public:
    static constexpr uint8_t type_id = tank_object_type;
 
    /// The schematic of the tank
-   tnt::tank_schematic schematic;
+   ptnt::tank_schematic schematic;
    /// The balance of the tank (asset id is in the schematic)
    share_type balance;
    /// The deposit being held for this tank (deposit is always CORE asset)
@@ -64,10 +65,10 @@ public:
    /// Storage of tank accessories' states
    accessory_state_map accessory_states;
    /// Cache of the ID of the tank's deposit_source_restrictor, if it has one
-   optional<tnt::index_type> restrictor_ID;
+   optional<ptnt::index_type> restrictor_ID;
 
    /// Get state by address (const, generic types)
-   const tnt::tank_accessory_state* get_state(const stateful_accessory_address& address) const {
+   const ptnt::tank_accessory_state* get_state(const stateful_accessory_address& address) const {
       auto itr = accessory_states.find(address);
       if (itr == accessory_states.end())
          return nullptr;
@@ -75,7 +76,7 @@ public:
    }
    /// Get state by address (const, specific types)
    template<typename Accessory, typename State = typename Accessory::state_type>
-   const State* get_state(const tnt::tank_accessory_address<Accessory>& address) const {
+   const State* get_state(const ptnt::tank_accessory_address<Accessory>& address) const {
       auto itr = accessory_states.find(address);
       if (itr == accessory_states.end())
          return nullptr;
@@ -83,38 +84,38 @@ public:
       return &itr->second.template get<State>();
    }
    /// Get state by address (mutable, generic types)
-   tnt::tank_accessory_state* get_state(const stateful_accessory_address& address) {
-      return const_cast<tnt::tank_accessory_state*>(const_cast<const tank_object*>(this)->get_state(address));
+   ptnt::tank_accessory_state* get_state(const stateful_accessory_address& address) {
+      return const_cast<ptnt::tank_accessory_state*>(const_cast<const tank_object*>(this)->get_state(address));
    }
    /// Get state by address (mutable, specific types)
    template<typename Accessory, typename State = typename Accessory::state_type>
-   State* get_state(const tnt::tank_accessory_address<Accessory>& address) {
+   State* get_state(const ptnt::tank_accessory_address<Accessory>& address) {
       return const_cast<State*>(const_cast<const tank_object*>(this)->get_state(address));
    }
    /// Get state by address, creating a default one if none yet exists (generic types)
-   tnt::tank_accessory_state& get_or_create_state(const stateful_accessory_address& address) {
+   ptnt::tank_accessory_state& get_or_create_state(const stateful_accessory_address& address) {
       auto itr = accessory_states.find(address);
       if (itr == accessory_states.end()) {
-         itr = accessory_states.insert(std::make_pair(address, tnt::tank_accessory_state())).first;
+         itr = accessory_states.insert(std::make_pair(address, ptnt::tank_accessory_state())).first;
          itr->second.set_which(address.which());
       }
       return itr->second;
    }
    /// Get state by address, creating a default one if none yet exists (specific types)
    template<typename Accessory, typename State = typename Accessory::state_type>
-   State& get_or_create_state(const tnt::tank_accessory_address<Accessory>& address) {
+   State& get_or_create_state(const ptnt::tank_accessory_address<Accessory>& address) {
       auto itr = accessory_states.find(address);
       if (itr == accessory_states.end()) {
-         auto state = std::make_pair(stateful_accessory_address(address), tnt::tank_accessory_state(State()));
+         auto state = std::make_pair(stateful_accessory_address(address), ptnt::tank_accessory_state(State()));
          itr = accessory_states.insert(std::move(state)).first;
       }
       return itr->second.template get<State>();
    }
 
    /// Delete state for any/all requirements on the specified tap
-   void clear_tap_state(tnt::index_type tap_ID);
+   void clear_tap_state(ptnt::index_type tap_ID);
    /// Delete state for the supplied attachment ID
-   void clear_attachment_state(tnt::index_type attachment_ID);
+   void clear_attachment_state(ptnt::index_type attachment_ID);
 };
 
 using tank_object_index_type = multi_index_container<
