@@ -107,7 +107,14 @@ namespace graphene { namespace protocol {
             custom_authority_create_operation,
             custom_authority_update_operation,
             custom_authority_delete_operation,
-            tank_create_operation
+            tank_create_operation,
+            tank_update_operation,
+            tank_delete_operation,
+            tank_query_operation,
+            tap_open_operation,
+            tap_connect_operation,
+            account_fund_sink_operation,
+            sink_fund_account_operation      // VIRTUAL
          > operation;
 
    /// @} // operations group

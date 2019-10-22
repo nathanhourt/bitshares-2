@@ -29,69 +29,42 @@
 #include <graphene/chain/tnt/cow_db_wrapper.hpp>
 
 namespace graphene { namespace chain { namespace tnt {
-struct tap_flow_evaluator_impl;
 
-/// A report of the results of a tap flow evaluation
-struct tap_flow_report {
-   /// Details of a particular tap flow
-   struct tap_flow {
-      /// The amount released from the tap
-      asset amount_released;
-      /// The ID of the tap that released asset
-      ptnt::tap_id_type source_tap;
-      /// The path of the tap flow, beginning with the source tank
-      vector<ptnt::sink> sink_path;
+/// Callback type used by @ref tap_flow_evaluator to notify the caller that an authority is required to open a tap.
+/// The callback is provided with the authority required and the ID of the tank of the tap requiring the authority
+using RequireAuthorityCallback = std::function<void(const authority&, tank_id_type)>;
 
-      tap_flow(const asset& amount, const ptnt::tap_id_type& tap, vector<ptnt::sink> path)
-         : amount_released(amount), source_tap(tap), sink_path(std::move(path)) {}
-   };
+/// Details of a particular tap flow
+struct tap_flow {
+   /// The amount released from the tap
+   asset amount_released;
+   /// The ID of the tap that released asset
+   ptnt::tap_id_type source_tap;
+   /// The path of the tap flow, beginning with the source tank
+   vector<ptnt::sink> sink_path;
 
-   /// All tap flows processed during this tap flow
-   vector<tap_flow> tap_flows;
-   /// All authorities required by the tap flow, associated with the ID of the tank which required the authority
-   flat_map<tank_id_type, vector<authority>> authorities_required;
+   tap_flow(const asset& amount, const ptnt::tap_id_type& tap, vector<ptnt::sink> path)
+      : amount_released(amount), source_tap(tap), sink_path(std::move(path)) {}
 };
 
 /**
- * @brief Evaluates the logic of opening taps and releasing asset
+ * @brief Evaluate a tap flow and all subsequently triggered tap flows
+ * @param db A copy-on-write database to apply tap flow changes to
+ * @param queries A query evaluator which has already applied any queries run prior to opening a tap
+ * @param account The account responsible for the movement of asset. If this account is not authorized to transact
+ * any of the asset types released, an exception will be thrown
+ * @param tank_id ID of the tank to open a tap on
+ * @param tap_id ID of the tap to open
+ * @param flow_amount The amount requested to open the tap for
+ * @param max_taps_to_open Maximum number of tap flows to process
+ * @param require_auth_cb Callback to require an authority to open a tap
+ * @param fund_account_cb Callback to deposit released asset into an account's balance
+ * @return List of the tap flows processed
  * @ingroup TNT
- *
- * This class implements the logic involved in opening taps and releasing asset to sinks, adjusting balances of tanks
- * and asset destinations, and triggering tank attachments which receive asset and release it to another sink. It
- * processes all tap flows triggered by the first one as well (i.e. due to asset flowing through a tap_opener), up to
- * a maximum number of taps to open.
- *
- * The tap_flow_evaluator processes the tap_requirements of the associated taps, and processes the logic and state
- * updates requisite to asset flowing through tank attachments. It does not, however, process query logic. It accepts
- * a @ref query_evaluator which should have already processed any necessary queries before the tap_flow_evaluator
- * runs. The queries are expected to be already applied to the provided COW database.
- *
- * This class applies the results of tap flow evaluation to the provided COW database directly. After running the tap
- * flow evaluation, invoke @ref cow_db_wrapper::commit to store the changes to the database.
  */
-class tap_flow_evaluator {
-   std::unique_ptr<tap_flow_evaluator_impl> my;
-
-public:
-   tap_flow_evaluator();
-
-   /**
-    * @brief Evaluate a tap flow and all subsequently triggered tap flows
-    * @param db A copy-on-write database to apply tap flow changes to
-    * @param queries A query evaluator which has already applied any queries run prior to opening a tap
-    * @param account The account responsible for the movement of asset. If this account is not authorized to transact
-    * any of the asset types released, an exception will be thrown
-    * @param tank_id ID of the tank to open a tap on
-    * @param tap_id ID of the tap to open
-    * @param flow_amount The amount requested to open the tap for
-    * @param max_taps_to_open Maximum number of tap flows to process
-    * @param fund_account_cb Callback to deposit released asset into an account's balance
-    * @return Report of the taps opened and flows processed
-    */
-   tap_flow_report evaluate_tap_flow(cow_db_wrapper& db, const query_evaluator& queries, account_id_type account,
-                                     ptnt::tap_id_type tap_to_open, ptnt::asset_flow_limit flow_amount,
-                                     int max_taps_to_open, FundAccountCallback fund_account_cb);
-
-};
+vector<tap_flow> evaluate_tap_flow(cow_db_wrapper& db, const query_evaluator& queries, account_id_type account,
+                                   ptnt::tap_id_type tap_to_open, ptnt::asset_flow_limit flow_amount,
+                                   int max_taps_to_open, RequireAuthorityCallback require_auth_cb,
+                                   FundAccountCallback fund_account_cb);
 
 } } } // namespace graphene::chain::tnt

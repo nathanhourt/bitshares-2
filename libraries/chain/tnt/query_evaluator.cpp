@@ -476,6 +476,8 @@ query_evaluator::query_evaluator() {
    my = std::make_unique<query_evaluator_impl>();
 }
 
+query_evaluator::~query_evaluator() = default;
+
 void query_evaluator::set_query_tank(const tank_object& tank) {
    FC_ASSERT(!my->query_tank.valid(), "The query tank must not be changed! Use a new query_evaluator instead");
    my->query_tank = tank;

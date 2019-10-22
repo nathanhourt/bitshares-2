@@ -38,8 +38,9 @@ struct proposal_operation_hardfork_visitor
    proposal_operation_hardfork_visitor( const database& _db, const fc::time_point_sec bt )
    : db( _db ), block_time(bt), next_maintenance_time( db.get_dynamic_global_properties().next_maintenance_time ) {}
 
-   template<typename T>
-   void operator()(const T &v) const {}
+   template<typename T,
+            std::enable_if_t<operation::tag<T>::value < operation::tag<tank_create_operation>::value, bool> = true>
+   void operator()(const T &) const {}
 
    void operator()(const graphene::chain::committee_member_update_global_parameters_operation &op) const {
       if (block_time < HARDFORK_CORE_1468_TIME) {
@@ -57,6 +58,17 @@ struct proposal_operation_hardfork_visitor
                    "Unable to define fees for custom authority operations prior to hardfork BSIP 40");
          FC_ASSERT(!op.new_parameters.current_fees->exists<custom_authority_delete_operation>(),
                    "Unable to define fees for custom authority operations prior to hardfork BSIP 40");
+      }
+      if (!HARDFORK_BSIP_72_PASSED(block_time)) {
+         FC_ASSERT(!op.new_parameters.extensions.value.updatable_tnt_options.valid(),
+                   "Unable to set TNT options before hardfork BSIP 72");
+         FC_ASSERT(!op.new_parameters.current_fees->exists<tank_create_operation>());
+         FC_ASSERT(!op.new_parameters.current_fees->exists<tank_update_operation>());
+         FC_ASSERT(!op.new_parameters.current_fees->exists<tank_delete_operation>());
+         FC_ASSERT(!op.new_parameters.current_fees->exists<tank_query_operation>());
+         FC_ASSERT(!op.new_parameters.current_fees->exists<tap_open_operation>());
+         FC_ASSERT(!op.new_parameters.current_fees->exists<tap_connect_operation>());
+         FC_ASSERT(!op.new_parameters.current_fees->exists<account_fund_sink_operation>());
       }
    }
    void operator()(const graphene::chain::htlc_create_operation &op) const {
@@ -76,6 +88,13 @@ struct proposal_operation_hardfork_visitor
    }
    void operator()(const graphene::chain::custom_authority_delete_operation&) const {
       FC_ASSERT( HARDFORK_BSIP_40_PASSED(block_time), "Not allowed until hardfork BSIP 40" );
+   }
+   using TNT_Ops = fc::typelist::list<tank_create_operation, tank_update_operation, tank_delete_operation,
+                                      tank_query_operation, tap_open_operation, tap_connect_operation,
+                                      account_fund_sink_operation, sink_fund_account_operation>;
+   template<typename Op, std::enable_if_t<fc::typelist::contains<TNT_Ops, Op>(), bool> = true>
+   void operator()(const Op&) const {
+      FC_ASSERT(HARDFORK_BSIP_72_PASSED(block_time), "Not allowed before hardfork BSIP 72");
    }
    // loop and self visit in proposals
    void operator()(const graphene::chain::proposal_create_operation &v) const {

@@ -34,6 +34,8 @@ struct tank_create_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = 5 * GRAPHENE_BLOCKCHAIN_PRECISION;
       uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 10;
+
+      extensions_type extensions;
    };
 
    /// Fee to pay for the create operation
@@ -61,6 +63,8 @@ struct tank_update_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
       uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 10;
+
+      extensions_type extensions;
    };
 
    /// Fee to pay for the update operation
@@ -102,6 +106,8 @@ struct tank_update_operation : public base_operation {
 struct tank_delete_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
+
+      extensions_type extensions;
    };
 
    /// Fee to pay for the delete operation
@@ -127,6 +133,8 @@ struct tank_query_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
       uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 10;
+
+      extensions_type extensions;
    };
 
    /// Fee to pay for the query operation
@@ -154,6 +162,9 @@ struct tap_open_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
       uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 10;
+      uint64_t price_per_tap = GRAPHENE_BLOCKCHAIN_PRECISION;
+
+      extensions_type extensions;
    };
 
    /// Fee to pay for the query operation
@@ -187,6 +198,8 @@ struct tap_open_operation : public base_operation {
 struct tap_connect_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
+
+      extensions_type extensions;
    };
 
    /// Fee to pay for the tap open operation
@@ -217,6 +230,8 @@ struct tap_connect_operation : public base_operation {
 struct account_fund_sink_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
+
+      extensions_type extensions;
    };
 
    /// Fee to pay for the fund operation
@@ -236,8 +251,13 @@ struct account_fund_sink_operation : public base_operation {
 };
 
 struct sink_fund_account_operation : public base_operation {
-   // Virtual operation -- does not charge a fee
+   // Virtual operation -- does not charge a fee, so these are unused
    struct fee_parameters_type {};
+   asset fee;
+
+   sink_fund_account_operation() = default;
+   sink_fund_account_operation(account_id_type id, const asset& amount, vector<tnt::sink> path)
+      : receiving_account(id), amount_received(amount), asset_path(std::move(path)) {}
 
    /// The account receiving the funds
    account_id_type receiving_account;
@@ -250,7 +270,7 @@ struct sink_fund_account_operation : public base_operation {
 
    account_id_type fee_payer() const { return receiving_account; }
    share_type calculate_fee(const fee_parameters_type&) const { return 0; }
-   void validate() const {}
+   [[noreturn]] void validate() const { FC_THROW_EXCEPTION(fc::assert_exception, "Virtual operation"); }
 };
 
 } } // namespace graphene::protocol

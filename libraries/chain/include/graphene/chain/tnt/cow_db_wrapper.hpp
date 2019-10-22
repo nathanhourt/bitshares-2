@@ -203,6 +203,7 @@ struct cow_object : fc::object_reflection<const T, impl::cow_refletion_data, imp
  */
 class cow_db_wrapper {
    const database& db;
+   mutable std::map<object_id_type, object*> db_cache;
    mutable std::set<impl::cow_refletion_data, impl::cow_data_lt> pensive_cattle;
 
 public:
@@ -215,7 +216,12 @@ public:
       decltype(pensive_cattle)::iterator itr = pensive_cattle.find(id);
       if (itr == pensive_cattle.end())
          itr = pensive_cattle.insert(impl::cow_refletion_data::create<T>(db, id)).first;
-      return cow_object<T>(db.get<T>(id), const_cast<impl::cow_refletion_data*>(&*itr));
+      auto cache_itr = db_cache.lower_bound(id);
+      if (cache_itr == db_cache.end() || cache_itr->first != id)
+         cache_itr = db_cache.insert(cache_itr, std::make_pair(id, (object*)&db.get<T>(id)));
+      const T* ptr = dynamic_cast<const T*>(cache_itr->second);
+      FC_ASSERT(ptr != nullptr, "INTERNAL ERROR: Failed to downcast object. Please report this error.");
+      return cow_object<T>(*ptr, const_cast<impl::cow_refletion_data*>(&*itr));
    }
    template<uint8_t SpaceID, uint8_t TypeID>
    auto get(object_id<SpaceID, TypeID> id) const {
@@ -223,7 +229,12 @@ public:
       auto itr = pensive_cattle.find(id);
       if (itr == pensive_cattle.end())
          itr = pensive_cattle.insert(impl::cow_refletion_data::create<Object>(db, id)).first;
-      return cow_object<Object>(db.get(id), const_cast<impl::cow_refletion_data*>(&*itr));
+      auto cache_itr = db_cache.lower_bound(id);
+      if (cache_itr == db_cache.end() || cache_itr->first != id)
+         cache_itr = db_cache.insert(cache_itr, std::make_pair(object_id_type(id), (object*)&db.get(id)));
+      const Object* ptr = dynamic_cast<const Object*>(cache_itr->second);
+      FC_ASSERT(ptr != nullptr, "INTERNAL ERROR: Failed to downcast object. Please report this error.");
+      return cow_object<Object>(*ptr, const_cast<impl::cow_refletion_data*>(&*itr));
    }
 
    /// Write all changes to the database

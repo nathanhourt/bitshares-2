@@ -166,7 +166,8 @@ void tank_query_operation::validate() const {
 }
 
 share_type tap_open_operation::calculate_fee(const fee_parameters_type& params) const {
-   return params.base_fee + (fc::raw::pack_size(*this) * params.price_per_byte);
+   return params.base_fee + (fc::raw::pack_size(*this) * params.price_per_byte)
+          + (tap_open_count * params.price_per_tap);
 }
 
 void tap_open_operation::validate() const {

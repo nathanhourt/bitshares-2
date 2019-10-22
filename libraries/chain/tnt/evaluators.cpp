@@ -24,7 +24,7 @@
 
 #include <graphene/chain/tnt/evaluators.hpp>
 #include <graphene/chain/tnt/object.hpp>
-#include <graphene/chain/tnt/cow_db_wrapper.hpp>
+#include <graphene/chain/tnt/tap_flow_evaluator.hpp>
 #include <graphene/chain/database.hpp>
 #include <graphene/chain/hardfork.hpp>
 
@@ -46,9 +46,9 @@ ptnt::tank_lookup_function make_lookup(const database& d) {
 
 void_result tank_create_evaluator::do_evaluate(const tank_create_operation& o) {
    const auto& d = db();
-   FC_ASSERT(HARDFORK_BSIP_72_PASSED(d.head_block_time()), "Tanks and Taps is not yet configured on this blockchain");
+   FC_ASSERT(HARDFORK_BSIP_72_PASSED(d.head_block_time()), "Tanks and Taps is not yet enabled on this blockchain");
    const auto& tnt_parameters = d.get_global_properties().parameters.extensions.value.updatable_tnt_options;
-   FC_ASSERT(tnt_parameters.valid(), "Tanks and Taps is not yet enabled on this blockchain");
+   FC_ASSERT(tnt_parameters.valid(), "Tanks and Taps is not yet configured on this blockchain");
 
    FC_ASSERT(d.get_balance(o.payer, asset_id_type()).amount >= o.deposit_amount,
              "Insufficient balance to pay the deposit");
@@ -74,9 +74,8 @@ object_id_type tank_create_evaluator::do_apply(const tank_create_operation& o) {
 
 void_result tank_update_evaluator::do_evaluate(const tank_update_evaluator::operation_type& o) {
    const auto& d = db();
-   FC_ASSERT(HARDFORK_BSIP_72_PASSED(d.head_block_time()), "Tanks and Taps is not yet configured on this blockchain");
    const auto& tnt_parameters = d.get_global_properties().parameters.extensions.value.updatable_tnt_options;
-   FC_ASSERT(tnt_parameters.valid(), "Tanks and Taps is not yet enabled on this blockchain");
+   FC_ASSERT(tnt_parameters.valid(), "Tanks and Taps is not yet configured on this blockchain");
 
    old_tank = &o.tank_to_update(d);
    FC_ASSERT(o.update_authority == *old_tank->schematic.taps.at(0).open_authority,
@@ -119,7 +118,6 @@ void_result tank_update_evaluator::do_apply(const tank_update_evaluator::operati
 
 void_result tank_delete_evaluator::do_evaluate(const tank_delete_evaluator::operation_type& o) {
    const auto& d = db();
-   FC_ASSERT(HARDFORK_BSIP_72_PASSED(d.head_block_time()), "Tanks and Taps is not yet configured on this blockchain");
 
    old_tank = &o.tank_to_delete(d);
    FC_ASSERT(o.delete_authority == *old_tank->schematic.taps.at(0).open_authority,
@@ -138,29 +136,46 @@ void_result tank_delete_evaluator::do_apply(const tank_delete_evaluator::operati
    return {};
 }
 
+struct auth_usage_checker {
+   const vector<authority>& declared_auths;
+   std::set<vector<authority>::const_iterator> used_auths;
+
+   auth_usage_checker(const vector<authority>& declared_auths) : declared_auths(declared_auths) {}
+
+   void require_auth(const authority& auth) {
+      auto itr = std::find(declared_auths.begin(), declared_auths.end(), auth);
+      FC_ASSERT(itr != declared_auths.end(), "Required authority for query was not declared: ${A}", ("A", auth));
+      used_auths.insert(itr);
+   }
+   void require_auths(const vector<authority>& auths) {
+      for (const auto& auth : auths) require_auth(auth);
+   }
+
+   void check_all_used() const {
+      if (used_auths.size() < declared_auths.size()) {
+         vector<authority> unused_auths(declared_auths.size() - used_auths.size());
+         for (auto itr = declared_auths.begin(); itr != declared_auths.end(); ++itr)
+            if (used_auths.count(itr) == 0)
+               unused_auths.push_back(*itr);
+         FC_THROW_EXCEPTION(fc::assert_exception, "Authorities were declared as required, but not used: ${Auths}",
+                            ("Auths", unused_auths));
+      }
+   }
+};
+
 void_result tank_query_evaluator::do_evaluate(const tank_query_evaluator::operation_type& o) {
    const auto& d = db();
    query_tank = &o.tank_to_query(d);
    evaluator.set_query_tank(*query_tank);
-   std::set<decltype(o.required_authorities)::const_iterator> used_auths;
+   auth_usage_checker auth_checker(o.required_authorities);
+   const auto& tnt_parameters = d.get_global_properties().parameters.extensions.value.updatable_tnt_options;
+   FC_ASSERT(tnt_parameters.valid(), "Tanks and Taps is not yet configured on this blockchain");
 
    for(const auto& query : o.queries) { try {
       auto required_auths = evaluator.evaluate_query(query, d);
-      for (const auto& auth : required_auths) {
-         auto itr = std::find(o.required_authorities.begin(), o.required_authorities.end(), auth);
-         FC_ASSERT(itr != o.required_authorities.end(), "Missing required authority for query: ${A}", ("A", auth));
-         used_auths.insert(itr);
-      }
+      auth_checker.require_auths(std::move(required_auths));
    } FC_CAPTURE_AND_RETHROW((query)) }
-
-   if (used_auths.size() != o.required_authorities.size()) {
-      vector<authority> unused_auths;
-      for (auto itr = o.required_authorities.begin(); itr != o.required_authorities.end(); ++itr)
-         if (used_auths.count(itr) == 0)
-            unused_auths.push_back(*itr);
-      FC_THROW_EXCEPTION(fc::assert_exception, "Authorities were declared as required, but not used: ${Auths}",
-                         ("Auths", unused_auths));
-   }
+   auth_checker.check_all_used();
 
    return {};
 }
@@ -169,6 +184,165 @@ void_result tank_query_evaluator::do_apply(const tank_query_evaluator::operation
    db().modify(*query_tank, [&evaluator=evaluator](tank_object& tank) {
       evaluator.apply_queries(tank);
    });
+   return {};
+}
+
+void_result tap_open_evaluator::do_evaluate(const tap_open_evaluator::operation_type& o) {
+   const auto& d = db();
+   tank = &d.get(*o.tap_to_open.tank_id);
+   db_wrapper = std::make_unique<cow_db_wrapper>(d);
+   const auto& tnt_parameters = d.get_global_properties().parameters.extensions.value.updatable_tnt_options;
+   FC_ASSERT(tnt_parameters.valid(), "Tanks and Taps is not yet configured on this blockchain");
+
+   // Check the tap exists
+   auto tap_itr = tank->schematic.taps.find(o.tap_to_open.tap_id);
+   FC_ASSERT(tap_itr != tank->schematic.taps.end(), "Cannot open tap: tap does not exist");
+   const ptnt::tap& tap = tap_itr->second;
+
+   // Perform requisite checks for tank destruction via destructor tap
+   if (o.deposit_claimed.valid()) {
+      FC_ASSERT(*o.deposit_claimed == tank->deposit, "Deposit claim does not match tank deposit amount");
+      FC_ASSERT(tap.destructor_tap, "Cannot destroy tank: tap is not a destructor tap");
+      delete_tank = true;
+
+      // Fast track: if we're deleting an empty tank, we can skip everything, just check auths and validity
+      if (tank->balance == 0) {
+         FC_ASSERT(o.queries.empty(), "When destroying an empty tank via destructor tap, queries are not run");
+         FC_ASSERT(o.tap_open_count == 1,
+                   "When destroying an empty tank via destructor tap, tap open count must be 1");
+         if (tap.open_authority.valid())
+            FC_ASSERT(o.required_authorities == vector<authority>{*tap.open_authority},
+                      "When destroying an empty tank via destructor tap, declare only the tap open authority");
+         else
+            FC_ASSERT(o.required_authorities.empty(), "Declare no authorities when destroying an empty tank via "
+                                                      "destructor tap with no open authority");
+         if (o.release_amount.is_type<share_type>())
+            FC_ASSERT(o.release_amount.get<share_type>() == 0,
+                      "When destroying an empty tank via destructor tap, release amount must be 0 or unlimited");
+         return {};
+      }
+   }
+
+   auth_usage_checker auth_checker(o.required_authorities);
+   tnt::query_evaluator query_evaluator;
+   query_evaluator.set_query_tank(*tank);
+
+   // Check tap is connected
+   FC_ASSERT(tap_itr->second.connected_sink.valid(), "Cannot open tap: tap is not connected");
+
+   // Evaluate the queries
+   for (const auto& query : o.queries) { try {
+      auto required_auths = query_evaluator.evaluate_query(query, d);
+      auth_checker.require_auths(std::move(required_auths));
+   } FC_CAPTURE_AND_RETHROW((query)) }
+   query_evaluator.apply_queries(db_wrapper->get<tank_object>(tank->id));
+
+   // Create the callbacks for tap flow evaluation
+   tnt::RequireAuthorityCallback cb_auth = [&auth_checker](const authority& auth, tank_id_type) {
+      auth_checker.require_auth(auth);
+   };
+   tnt::FundAccountCallback cb_pay = [this](account_id_type account, asset amount, vector<ptnt::sink> path) {
+      accounts_to_pay.emplace_back(account, amount, std::move(path));
+   };
+
+   // Perform the tap flows
+   auto flows =
+      tnt::evaluate_tap_flow(*db_wrapper, query_evaluator, o.payer, o.tap_to_open, o.release_amount, o.tap_open_count,
+                             std::move(cb_auth), std::move(cb_pay));
+   // Check that the declarations matched the requirements
+   FC_ASSERT(flows.size() == o.tap_open_count, "Declared count of taps to open does not match count of taps opened");
+   auth_checker.check_all_used();
+   // If destroying the tank, make sure it got emptied during tap flow
+   if (delete_tank)
+      FC_ASSERT(db_wrapper->get(*o.tap_to_open.tank_id).balance() == 0,
+                "Cannot destroy nonempty tank if tank is not being emptied in the current operation");
+
+   return {};
+}
+
+void_result tap_open_evaluator::do_apply(const tap_open_evaluator::operation_type& o) {
+   database& d = db();
+   db_wrapper->commit(d);
+
+   for (auto& payable : accounts_to_pay) {
+      d.adjust_balance(payable.receiving_account, payable.amount_received);
+      d.push_applied_operation(std::move(payable));
+   }
+
+   if (delete_tank) {
+      d.remove(*tank);
+      d.adjust_balance(o.payer, asset(*o.deposit_claimed));
+   }
+
+   return {};
+}
+
+void_result tap_connect_evaluator::do_evaluate(const tap_connect_evaluator::operation_type& o) {
+   const database& d = db();
+   tank = &d.get(*o.tap_to_connect.tank_id);
+
+   // Check tap exists
+   auto tap_itr = tank->schematic.taps.find(o.tap_to_connect.tap_id);
+   FC_ASSERT(tap_itr != tank->schematic.taps.end(), "Cannot connect tap: tap does not exist");
+   const ptnt::tap& tap = tap_itr->second;
+
+   // Check authority
+   FC_ASSERT(tap.connect_authority.valid(), "Cannot connect tap: tap connect authority is unset");
+   FC_ASSERT(o.connect_authority == *tap.connect_authority);
+
+   return {};
+}
+
+void_result tap_connect_evaluator::do_apply(const tap_connect_evaluator::operation_type& o) {
+   database& d = db();
+   d.modify(*tank, [&o](tank_object& tank) {
+      ptnt::tap& tap = tank.schematic.taps[o.tap_to_connect.tap_id];
+      tap.connected_sink = o.new_sink;
+      if (o.clear_connect_authority)
+         tap.connect_authority.reset();
+   });
+
+   return {};
+}
+
+void_result account_fund_sink_evaluator::do_evaluate(const account_fund_sink_evaluator::operation_type& o) {
+   const database& d = db();
+   FC_ASSERT(HARDFORK_BSIP_72_PASSED(d.head_block_time()), "Tanks and Taps is not yet enabled on this blockchain");
+   db_wrapper = std::make_unique<cow_db_wrapper>(d);
+   const auto& tnt_parameters = d.get_global_properties().parameters.extensions.value.updatable_tnt_options;
+   FC_ASSERT(tnt_parameters.valid(), "Tanks and Taps is not yet configured on this blockchain");
+
+   // Check account balance
+   FC_ASSERT(d.get_balance(o.funding_account, o.funding_amount.asset_id) >= o.funding_amount,
+             "Cannot fund sink: account has insufficient balance");
+
+   // Create the callbacks for sink flow processing
+   tnt::TapOpenCallback cb_open = [](ptnt::tap_id_type, ptnt::asset_flow_limit) {
+      FC_THROW_EXCEPTION(fc::assert_exception,
+                         "Opening taps from within account_fund_sink_operation is not currently supported");
+   };
+   tnt::FundAccountCallback cb_pay = [this](account_id_type account, asset amount, vector<ptnt::sink> path) {
+      accounts_to_pay.emplace_back(account, amount, std::move(path));
+   };
+
+   // Process the flow
+   tnt::sink_flow_processor flow_processor(*db_wrapper, std::move(cb_open), std::move(cb_pay));
+   flow_processor.release_to_sink(o.funding_account, o.funding_destination, o.funding_amount);
+
+   return {};
+}
+
+void_result account_fund_sink_evaluator::do_apply(const account_fund_sink_evaluator::operation_type& o) {
+   database& d = db();
+
+   db_wrapper->commit(d);
+   d.adjust_balance(o.funding_account, -o.funding_amount);
+
+   for (const auto& payable : accounts_to_pay) {
+      d.adjust_balance(payable.receiving_account, payable.amount_received);
+      d.push_applied_operation(std::move(payable));
+   }
+
    return {};
 }
 

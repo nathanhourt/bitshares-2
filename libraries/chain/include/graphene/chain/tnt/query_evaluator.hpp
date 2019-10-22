@@ -32,8 +32,8 @@ class database;
 namespace ptnt = protocol::tnt;
 namespace tnt {
 template<typename T> using const_ref = std::reference_wrapper<const T>;
-
 struct query_evaluator_impl;
+
 /// @brief A class to evaluate and apply tank queries
 /// @ingroup TNT
 ///
@@ -57,6 +57,7 @@ class query_evaluator {
 
 public:
    query_evaluator();
+   ~query_evaluator();
 
    /**
     * @brief Set the tank that this object will process queries for
