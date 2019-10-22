@@ -260,9 +260,15 @@ template<typename Field, typename Element>
 struct predicate_in<fc::optional<Field>, flat_set<Element>, std::enable_if_t<comparable_types<Field, Element>>> {
    // Check for optional value
    constexpr static bool valid = true;
+   template<typename F = Field, std::enable_if_t<!std::is_same<F, share_type>::value, bool> = true>
    bool operator()(const fc::optional<Field>& f, const flat_set<Element>& c) const {
       if (!f.valid()) return predicate_result::Rejection(predicate_result::null_optional);
        return c.count(*f) != 0;
+   }
+   template<typename F = Field, std::enable_if_t<std::is_same<F, share_type>::value, bool> = true>
+   bool operator()(const fc::optional<share_type>& f, const flat_set<Element>& c) const {
+      if (!f.valid()) return predicate_result::Rejection(predicate_result::null_optional);
+       return c.count(Element(f->value)) != 0;
    }
 };
 template<typename Container, typename Element>

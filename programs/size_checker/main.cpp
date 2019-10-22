@@ -22,13 +22,13 @@
  * THE SOFTWARE.
  */
 
+#include <graphene/protocol/block.hpp>
+#include <graphene/protocol/fee_schedule.hpp>
+
 #include <fc/io/json.hpp>
 #include <fc/io/raw.hpp>
 #include <fc/variant.hpp>
 #include <fc/variant_object.hpp>
-
-#include <graphene/protocol/block.hpp>
-#include <graphene/protocol/fee_schedule.hpp>
 
 #include <algorithm>
 #include <iostream>

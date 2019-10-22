@@ -48,7 +48,9 @@ struct hardfork_visitor {
    using first_unforked_op = custom_authority_create_operation;
    using BSIP_40_ops = TL::list<custom_authority_create_operation, custom_authority_update_operation,
                                 custom_authority_delete_operation>;
-   using TNT_ops = TL::list<tank_create_operation>;
+   using TNT_ops = TL::list<tank_create_operation, tank_update_operation, tank_delete_operation,
+                            tank_query_operation, tap_open_operation, tap_connect_operation,
+                            account_fund_sink_operation, sink_fund_account_operation>;
    fc::time_point_sec now;
 
    hardfork_visitor(fc::time_point_sec now) : now(now) {}
