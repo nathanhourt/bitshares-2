@@ -59,29 +59,29 @@ struct hardfork_visitor {
    /// @{
    template<typename Op>
    std::enable_if_t<operation::tag<Op>::value < operation::tag<first_unforked_op>::value, bool>
-   visit() { return true; }
+   visit() const { return true; }
    template<typename Op>
    std::enable_if_t<TL::contains<BSIP_40_ops, Op>(), bool>
-   visit() { return HARDFORK_BSIP_40_PASSED(now); }
+   visit() const { return HARDFORK_BSIP_40_PASSED(now); }
    template<typename Op>
    std::enable_if_t<TL::contains<TNT_ops, Op>(), bool>
-   visit() { return HARDFORK_BSIP_72_PASSED(now); }
+   visit() const { return HARDFORK_BSIP_72_PASSED(now); }
    /// @}
 
    /// typelist::runtime::dispatch adaptor
    template<class W, class Op=typename W::type>
    std::enable_if_t<TL::contains<operation::list, Op>(), bool>
-   operator()(W) { return visit<Op>(); }
+   operator()(W) const { return visit<Op>(); }
    /// static_variant::visit adaptor
    template<class Op>
    std::enable_if_t<TL::contains<operation::list, Op>(), bool>
-   operator()(const Op&) { return visit<Op>(); }
+   operator()(const Op&) const { return visit<Op>(); }
    /// Tag adaptor
-   bool visit(operation::tag_type tag) {
+   bool visit(operation::tag_type tag) const {
       return TL::runtime::dispatch(operation::list(), (size_t)tag, *this);
    }
    /// operation adaptor
-   bool visit(const operation& op) {
+   bool visit(const operation& op) const {
       return visit(op.which());
    }
 };

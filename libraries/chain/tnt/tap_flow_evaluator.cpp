@@ -32,19 +32,27 @@ namespace graphene { namespace chain { namespace tnt {
 
 vector<tap_flow> evaluate_tap_flow(cow_db_wrapper& db, const query_evaluator& queries, account_id_type account,
                                    ptnt::tap_id_type tap_to_open, ptnt::asset_flow_limit flow_amount,
-                                   int max_taps_to_open, RequireAuthorityCallback require_auth_cb,
-                                   FundAccountCallback fund_account_cb) {
+                                   int max_taps_to_open, FundAccountCallback fund_account_cb) {
    const account_object& responsible_account = account(db.get_db());
    std::queue<std::pair<ptnt::tap_id_type, ptnt::asset_flow_limit>> pending_taps;
-   pending_taps.push(std::make_pair(tap_to_open, flow_amount));
    vector<tap_flow> tap_flows;
+   std::map<ptnt::tap_id_type, tap_requirement_utility> tap_utilities;
+
+   auto getTapUtil = [&tap_utilities, &db, &queries](ptnt::tap_id_type id) -> tap_requirement_utility& {
+     auto itr = tap_utilities.lower_bound(id);
+     if (itr->first != id)
+        itr = tap_utilities.emplace_hint(itr, std::make_pair(id, tap_requirement_utility(db, id, queries)));
+     return itr->second;
+   };
    auto enqueueTap = [&pending_taps, &tap_flows, &max_taps_to_open](ptnt::tap_id_type id,
-                                                                            ptnt::asset_flow_limit amount) {
+                                                                    ptnt::asset_flow_limit amount) {
       FC_ASSERT(pending_taps.size() + tap_flows.size() < (unsigned long)max_taps_to_open,
                 "Tap flow has exceeded its maximum number of taps to open");
       pending_taps.emplace(std::move(id), std::move(amount));
    };
    sink_flow_processor sink_processor(db, std::move(enqueueTap), std::move(fund_account_cb));
+
+   pending_taps.push(std::make_pair(tap_to_open, flow_amount));
 
    while (!pending_taps.empty()) {
       ptnt::tap_id_type current_tap = pending_taps.front().first;
@@ -55,8 +63,6 @@ vector<tap_flow> evaluate_tap_flow(cow_db_wrapper& db, const query_evaluator& qu
       auto tank = db.get(*current_tap.tank_id);
       FC_ASSERT(tank.schematic().taps().count(current_tap.tap_id) != 0, "Tap to open does not exist!");
       const ptnt::tap& tap = tank.schematic().taps().at(current_tap.tap_id);
-      if (tap.open_authority.valid())
-         require_auth_cb(*tap.open_authority, *current_tap.tank_id);
       FC_ASSERT(tap.connected_sink.valid(), "Cannot open tap ${ID}: tap is not connected to a sink",
                 ("ID", current_tap));
       // Check the responsible account is authorized to transact the tank's asset
@@ -65,12 +71,12 @@ vector<tap_flow> evaluate_tap_flow(cow_db_wrapper& db, const query_evaluator& qu
                 "Cannot open tap: responsible account ${R} is not authorized to transact the tank's asset ${A}",
                 ("R", account)("A", tank_asset.symbol));
       // Check tank balance (it's checked later too, but we can skip a lot of work if it's obviously wrong)
-      if (flow_amount.is_type<share_type>())
-         FC_ASSERT(tank.balance() >= flow_amount.get<share_type>(),
+      if (current_amount.is_type<share_type>())
+         FC_ASSERT(tank.balance() >= current_amount.get<share_type>(),
                    "Cannot release requested amount through tap: tank has insufficient balance");
 
       // Calculate the max amount the tap's requirements will allow to be released
-      tap_requirement_utility util(db, current_tap, queries);
+      tap_requirement_utility& util = getTapUtil(current_tap);
       auto release_limit = util.max_tap_release();
       auto req_index = util.most_restrictive_requirement_index();
       // Check that the tap is not locked
@@ -92,6 +98,8 @@ vector<tap_flow> evaluate_tap_flow(cow_db_wrapper& db, const query_evaluator& qu
          release_limit = current_amount.get<share_type>();
       }
 
+      // Notify the tap requirements of the amount being released
+      util.prepare_tap_release(release_limit);
       // By now, release_limit is the exact amount we will be releasing. Remove it from the tank balance
       tank.balance = tank.balance() - release_limit;
       // Flow the released asset until it stops

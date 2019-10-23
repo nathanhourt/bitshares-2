@@ -56,6 +56,9 @@ tap_requirement_utility::tap_requirement_utility(cow_db_wrapper& db, ptnt::tap_i
                                      "Please report this error.");
    my = std::make_unique<tap_requirement_utility_impl>(db, queries, std::move(tap_ID));
 }
+
+tap_requirement_utility::tap_requirement_utility(tap_requirement_utility&&) = default;
+tap_requirement_utility& tap_requirement_utility::operator=(tap_requirement_utility&&) = default;
 tap_requirement_utility::~tap_requirement_utility() = default;
 
 // Get the maximum amount a particular tap_requirement will allow to be released

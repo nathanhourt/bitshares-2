@@ -86,60 +86,123 @@ bool operator==(const tank_accessory_address<AccA>&, const tank_accessory_addres
 using tank_accessory_address_type = TL::apply<TL::apply_each<tank_accessory_list, tank_accessory_address>,
                                               static_variant>;
 
-/// Comparator for accessory_address types; uses the following semantics:
-///  - Ordering is done according to address value, not type
-///  - Tank attachment addresses are ordered by their attachment IDs
-///  - Tap requirement addresses are ordered by their (tap ID, requirement index) pairs
-///  - Tank attachment addresses are ordered before tap requirement addresses
-/// The comparator also accepts tap_id_type operands, which match as equal to all requirement addresses on that tap
-template<typename AddressVariant = tank_accessory_address_type>
-struct accessory_address_lt {
-   using is_transparent = void;
-   template<typename Address, typename = std::enable_if_t<AddressVariant::template can_store<Address>()>>
-   constexpr static bool is_requirement_address = (Address::accessory_type::accessory_type ==
-                                                   tnt::tap_requirement_accessory_type);
-
-   template<typename Address_A, typename Address_B, std::enable_if_t<!is_requirement_address<Address_A> &&
-                                                                     !is_requirement_address<Address_B>, bool> = true>
-   bool operator()(const Address_A& a, const Address_B& b) const {
-      return a.attachment_ID < b.attachment_ID;
-   }
-   template<typename Address_A, typename Address_B, std::enable_if_t<is_requirement_address<Address_A> &&
-                                                                     is_requirement_address<Address_B>, bool> = true>
-   bool operator()(const Address_A& a, const Address_B& b) const {
+namespace impl {
+// This namespace block contains the implementation of accessory_address_lt below
+// This is a shorthand to check if a specific Address type is for a tap requirement vs a tank attachment
+template<typename Address,
+         std::enable_if_t<TL::contains<tank_accessory_list, typename Address::accessory_type>(), bool> = true>
+constexpr static bool is_requirement_address = (Address::accessory_type::accessory_type ==
+                                                tnt::tap_requirement_accessory_type);
+// Base template... just says it's invalid
+template<typename Variant, typename AccessoryA, typename AccessoryB, typename=void>
+struct address_lt_impl {
+   constexpr static bool valid = false;
+};
+// Compare specific address types, both of which address tap requirements
+template<typename V, typename A, typename B>
+struct address_lt_impl<V, A, B, std::enable_if_t<is_requirement_address<A> && is_requirement_address<B>>> {
+   constexpr static bool valid = true;
+   bool operator()(const A& a, const B& b) const {
       return std::make_pair(a.tap_ID, a.requirement_index) < std::make_pair(b.tap_ID, b.requirement_index);
    }
-   template<typename Address_A, typename Address_B, std::enable_if_t<is_requirement_address<Address_A> !=
-                                                                     is_requirement_address<Address_B>, bool> = true>
-   bool operator()(const Address_A&, const Address_B&) const {
-      return !is_requirement_address<Address_A>;
+};
+// Compare specific address types, both of which address tank attachments
+template<typename V, typename A, typename B>
+struct address_lt_impl<V, A, B, std::enable_if_t<!is_requirement_address<A> && !is_requirement_address<B>>> {
+   constexpr static bool valid = true;
+   bool operator()(const A& a, const B& b) const {
+      return a.attachment_ID < b.attachment_ID;
    }
-   template<typename Address, std::enable_if_t<is_requirement_address<Address>, bool> = true>
-   bool operator()(const Address& a, const tnt::tap_id_type& tid) const { return a.tap_ID < tid.tap_id; }
-   template<typename Address, std::enable_if_t<!is_requirement_address<Address>, bool> = true>
-   bool operator()(const Address&, const tnt::tap_id_type&) const { return true; }
-   template<typename Address, std::enable_if_t<is_requirement_address<Address>, bool> = true>
-   bool operator()(const tnt::tap_id_type& tid, const Address& a) const { return tid.tap_id < a.tap_ID; }
-   template<typename Address, std::enable_if_t<!is_requirement_address<Address>, bool> = true>
-   bool operator()(const tnt::tap_id_type&, const Address&) const { return false; }
-   bool operator()(const AddressVariant& a, const AddressVariant& b) const {
-      return tnt::TL::runtime::dispatch(typename AddressVariant::list(), a.which(), [this, &a, &b] (auto A) {
+};
+// Compare specific address types, one of which is a tank attachment and the other is a tap requirement
+template<typename V, typename A, typename B>
+struct address_lt_impl<V, A, B, std::enable_if_t<is_requirement_address<A> != is_requirement_address<B>>> {
+   constexpr static bool valid = true;
+   bool operator()(const A&, const B&) const {
+      // If A is the tank attachment, it's less than B; otherwise, it's greater
+      return !is_requirement_address<A>;
+   }
+};
+// Compare a tap requirement address against a tap ID
+template<typename V, typename A>
+struct address_lt_impl<V, A, tap_id_type, std::enable_if_t<is_requirement_address<A>>> {
+   constexpr static bool valid = true;
+   bool operator()(const A& a, const tnt::tap_id_type& tid) const { return a.tap_ID < tid.tap_id; }
+};
+// Compare a tap ID against a tap requirement address
+template<typename V, typename A>
+struct address_lt_impl<V, tap_id_type, A, std::enable_if_t<is_requirement_address<A>>> {
+   constexpr static bool valid = true;
+   bool operator()(const tnt::tap_id_type& tid, const A& a) const { return tid.tap_id < a.tap_ID; }
+};
+// Compare a tank attachment address against a tap ID (attachments are unconditionally less than tap IDs)
+template<typename V, typename A>
+struct address_lt_impl<V, A, tap_id_type, std::enable_if_t<!is_requirement_address<A>>>{
+   constexpr static bool valid = true;
+   bool operator()(const A&, const tnt::tap_id_type&) const { return true; }
+};
+// Compare a tap ID against a tank attachment address (tap IDs are unconditionally greater than attachments)
+template<typename V, typename A>
+struct address_lt_impl<V, tap_id_type, A, std::enable_if_t<!is_requirement_address<A>>>{
+   constexpr static bool valid = true;
+   bool operator()(const tnt::tap_id_type&, const A&) const { return false; }
+};
+// Compare two address variants
+template<typename V>
+struct address_lt_impl<V, V, V, void> {
+   constexpr static bool valid = true;
+   bool operator()(const V& a, const V& b) const {
+      return tnt::TL::runtime::dispatch(typename V::list(), a.which(), [&a, &b] (auto A) -> bool {
          using A_type = typename decltype(A)::type;
-         return tnt::TL::runtime::dispatch(typename AddressVariant::list(), b.which(), [this, &a, &b](auto B) {
+         return tnt::TL::runtime::dispatch(typename V::list(), b.which(), [&a, &b](auto B) -> bool {
             using B_type = typename decltype(B)::type;
-            return (*this)(a.template get<A_type>(), b.template get<B_type>());
+            address_lt_impl<V, A_type, B_type> inner;
+            return inner(a.template get<A_type>(), b.template get<B_type>());
          });
       });
    }
-   bool operator()(const AddressVariant& a, const tnt::tap_id_type& tid) const {
-      return tnt::TL::runtime::dispatch(typename AddressVariant::list(), a.which(), [this, &a, &tid](auto A) {
-         return (*this)(a.template get<typename decltype(A)::type>(), tid);
+};
+// Compare an address variant with a specific address type or tap ID
+template<typename V, typename A>
+struct address_lt_impl<V, V, A, std::enable_if_t<V::template can_store<A>() || std::is_same<A, tap_id_type>::value>> {
+   constexpr static bool valid = true;
+   bool operator()(const V& v, const A& a) const {
+      return tnt::TL::runtime::dispatch(typename V::list(), v.which(), [&v, &a](auto t) {
+         using V_type = typename decltype(t)::type;
+         address_lt_impl<V, V_type, A> inner;
+         return inner(v.template get<V_type>(), a);
       });
    }
-   bool operator()(const tnt::tap_id_type& tid, const AddressVariant& a) const {
-      return tnt::TL::runtime::dispatch(typename AddressVariant::list(), a.which(), [this, &tid, &a](auto A) {
-         return (*this)(tid, a.template get<typename decltype(A)::type>());
+};
+// Compare a specific address type or tap ID with an address variant
+template<typename V, typename A>
+struct address_lt_impl<V, A, V, std::enable_if_t<V::template can_store<A>() || std::is_same<A, tap_id_type>::value>> {
+   constexpr static bool valid = true;
+   bool operator()(const A& a, const V& v) const {
+      return tnt::TL::runtime::dispatch(typename V::list(), v.which(), [&a, &v](auto t) {
+         using V_type = typename decltype(t)::type;
+         address_lt_impl<V, A, V_type> inner;
+         return inner(a, v.template get<V_type>());
       });
+   }
+};
+}
+
+/// Comparator for accessory_address types; uses the following semantics:
+///  - Ordering is defined according to value, not type, except all tank attachments are less than tap requirements
+///  - Tank attachment addresses are ordered by their attachment IDs
+///  - Tap requirement addresses are ordered by their (tap ID, requirement index) pairs
+/// The comparator also accepts tap_id_type operands, which match as equal to all requirement addresses on that tap
+template<typename AddressVariant = tank_accessory_address_type>
+struct accessory_address_lt {
+   // Having an is_transparent type tells associative containers that the comparator supports comparing keys against
+   // other types than the key. The actual type is ignored, only its existence is checked.
+   using is_transparent = void;
+   // Implementation is proxied out to implementation SFINAE template
+   template<typename A, typename B, typename=std::enable_if_t<impl::address_lt_impl<AddressVariant, A, B>::valid>>
+   bool operator()(const A& a, const B& b) const {
+      impl::address_lt_impl<AddressVariant, A, B> inner;
+      return inner(a, b);
    }
 };
 

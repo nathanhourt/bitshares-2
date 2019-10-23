@@ -41,6 +41,7 @@
 #include <graphene/chain/witness_object.hpp>
 #include <graphene/chain/worker_object.hpp>
 #include <graphene/chain/htlc_object.hpp>
+#include <graphene/chain/tnt/object.hpp>
 #include <graphene/chain/proposal_object.hpp>
 #include <graphene/chain/hardfork_visitor.hpp>
 
@@ -472,6 +473,7 @@ bool database_fixture::validation_current_test_name_for_setting_api_limit( const
 
    return false;
 }
+
 void database_fixture::verify_asset_supplies( const database& db )
 {
    //wlog("*** Begin asset supply verification ***");
@@ -544,6 +546,13 @@ void database_fixture::verify_asset_supplies( const database& db )
    for( auto itr = htlc_idx.begin(); itr != htlc_idx.end(); ++itr )
    {
       total_balances[itr->transfer.asset_id] += itr->transfer.amount;
+   }
+
+   // tnt
+   const auto& tnt_idx = db.get_index_type<tank_index>().indices().get<by_id>();
+   for (const auto& tank : tnt_idx) {
+      total_balances[asset_id_type()] += tank.deposit;
+      total_balances[tank.schematic.asset_type] += tank.balance;
    }
 
    for( const asset_object& asset_obj : db.get_index_type<asset_index>().indices() )
@@ -1436,6 +1445,35 @@ vector< graphene::market_history::order_history_object > database_fixture::get_m
    return result;
 }
 
+void database_fixture::set_committee_parameters(chain_parameters new_params) {
+   proposal_create_operation cop = proposal_create_operation::committee_proposal(
+         db.get_global_properties().parameters, db.head_block_time());
+   cop.fee_paying_account = GRAPHENE_TEMP_ACCOUNT;
+   cop.expiration_time = db.head_block_time() + *cop.review_period_seconds + 10;
+   committee_member_update_global_parameters_operation uop;
+   uop.new_parameters = new_params;
+   cop.proposed_ops.emplace_back(uop);
+
+   trx.set_expiration(db.head_block_time() + 100);
+   trx.operations.push_back(cop);
+   graphene::chain::processed_transaction proc_trx = db.push_transaction(trx);
+   trx.clear();
+   proposal_id_type good_proposal_id = proc_trx.operation_results[0].get<object_id_type>();
+
+   proposal_update_operation puo;
+   puo.proposal = good_proposal_id;
+   puo.fee_paying_account = GRAPHENE_TEMP_ACCOUNT;
+   puo.key_approvals_to_add.emplace( init_account_priv_key.get_public_key() );
+   trx.operations.push_back(puo);
+   sign( trx, init_account_priv_key );
+   db.push_transaction(trx);
+   trx.clear();
+
+   generate_blocks( good_proposal_id( db ).expiration_time + 5 );
+   generate_blocks( db.get_dynamic_global_properties().next_maintenance_time );
+   generate_block();   // get the maintenance skip slots out of the way
+}
+
 flat_map< uint64_t, graphene::chain::fee_parameters > database_fixture::get_htlc_fee_parameters()
 {
    flat_map<uint64_t, graphene::chain::fee_parameters> ret_val;
@@ -1481,36 +1519,28 @@ void database_fixture::set_htlc_committee_parameters()
       }
    }
    // htlc parameters
-   proposal_create_operation cop = proposal_create_operation::committee_proposal(
-         db.get_global_properties().parameters, db.head_block_time());
-   cop.fee_paying_account = GRAPHENE_TEMP_ACCOUNT;
-   cop.expiration_time = db.head_block_time() + *cop.review_period_seconds + 10;
-   committee_member_update_global_parameters_operation uop;
-   graphene::chain::htlc_options new_params;
-   new_params.max_preimage_size = 19200;
-   new_params.max_timeout_secs = 60 * 60 * 24 * 28;
-   uop.new_parameters.extensions.value.updatable_htlc_options = new_params;
-   uop.new_parameters.current_fees = new_fee_schedule;
-   cop.proposed_ops.emplace_back(uop);
 
-   trx.operations.push_back(cop);
-   graphene::chain::processed_transaction proc_trx = db.push_transaction(trx);
-   trx.clear();
-   proposal_id_type good_proposal_id = proc_trx.operation_results[0].get<object_id_type>();
+   graphene::chain::htlc_options htlc_params;
+   htlc_params.max_preimage_size = 19200;
+   htlc_params.max_timeout_secs = 60 * 60 * 24 * 28;
+   chain_parameters new_params;
+   new_params.extensions.value.updatable_htlc_options = std::move(htlc_params);
+   new_params.current_fees = std::move(new_fee_schedule);
+   set_committee_parameters(std::move(new_params));
+}
 
-   proposal_update_operation puo;
-   puo.proposal = good_proposal_id;
-   puo.fee_paying_account = GRAPHENE_TEMP_ACCOUNT;
-   puo.key_approvals_to_add.emplace( init_account_priv_key.get_public_key() );
-   trx.operations.push_back(puo);
-   sign( trx, init_account_priv_key );
-   db.push_transaction(trx);
-   trx.clear();
-
-   generate_blocks( good_proposal_id( db ).expiration_time + 5 );
-   generate_blocks( db.get_dynamic_global_properties().next_maintenance_time );
-   generate_block();   // get the maintenance skip slots out of the way
-
+void database_fixture::set_tnt_committee_parameters() {
+   if (!HARDFORK_BSIP_72_PASSED(db.head_block_time()))
+      generate_blocks(HARDFORK_BSIP_72_TIME + GRAPHENE_DEFAULT_BLOCK_INTERVAL, true);
+   chain_parameters new_params = db.get_global_properties().parameters;
+   new_params.get_mutable_fees().parameters.clear();
+   fc::typelist::runtime::for_each(operation::list(),
+                                   [&new_params, hf_in=hardfork_visitor(db.head_block_time())](auto t) {
+      if (hf_in.visit<typename decltype(t)::type>())
+         new_params.get_mutable_fees().parameters.insert(typename decltype(t)::type::fee_parameters_type());
+   });
+   new_params.extensions.value.updatable_tnt_options = tnt::parameters_type();
+   set_committee_parameters(std::move(new_params));
 }
 
 namespace test {

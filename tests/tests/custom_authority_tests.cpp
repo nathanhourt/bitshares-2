@@ -63,21 +63,6 @@ unsigned_int member_index(string name) {
    return index;
 }
 
-template<typename Expression>
-void expect_exception_string(const string& s, Expression e) {
-   try{
-      e();
-      FC_THROW_EXCEPTION(fc::assert_exception, "Expected exception with string ${s}, but no exception thrown",
-                         ("s", s));
-   } catch (const fc::exception& e) {
-      FC_ASSERT(e.to_detail_string().find(s) != string::npos, "Did not find expected string ${s} in exception: ${e}",
-                ("s", s)("e", e));
-   }
-}
-#define EXPECT_EXCEPTION_STRING(S, E) \
-    BOOST_TEST_CHECKPOINT("Expect exception containing string: " S); \
-    expect_exception_string(S, E)
-
 BOOST_AUTO_TEST_CASE(restriction_predicate_tests) { try {
    using namespace graphene::protocol;
    //////

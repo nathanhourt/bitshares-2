@@ -21,6 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#pragma once
 
 #include <graphene/protocol/tnt/lookups.hpp>
 #include <graphene/protocol/tnt/parameters.hpp>
@@ -105,6 +106,15 @@ public:
    }
    /// Calculate the deposit required for this tank and all accessories
    share_type calculate_deposit(const parameters_type& parameters) const;
+   /// Shorthand to calculate the deposit for a tank, without manually creating the tank_validator (tank must pass
+   /// validation, or an exception will be thrown)
+   static share_type calculate_deposit(const tank_schematic& schematic, const parameters_type& parameters);
+   template<typename DB>
+   static share_type calculate_deposit(const tank_schematic& schematic, const DB& database) {
+      const auto& params = database.get_global_properties().parameters.extensions.value.updatable_tnt_options;
+      FC_ASSERT(params.valid(), "Cannot calculate deposit: TNT disabled on target database");
+      return calculate_deposit(schematic, *params);
+   }
 };
 
 /// A class to check if tank accessories are unique; can be instantiated for tank_attachment or tap_requirement

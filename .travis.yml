@@ -27,6 +27,6 @@ env:
 jobs:
   include:
     - stage: build for cache
-      script: ./programs/build_helpers/build_protocol
+      script: ./programs/build_helpers/build_cache
     - stage: build and test
       script: ./programs/build_helpers/build_and_test

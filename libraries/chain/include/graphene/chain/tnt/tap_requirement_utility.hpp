@@ -47,6 +47,8 @@ public:
     * @param queries The queries which have been run in the current operation
     */
    tap_requirement_utility(cow_db_wrapper& db, protocol::tnt::tap_id_type tap_ID, const query_evaluator& queries);
+   tap_requirement_utility(tap_requirement_utility&&);
+   tap_requirement_utility& operator=(tap_requirement_utility&&);
    ~tap_requirement_utility();
 
    /**

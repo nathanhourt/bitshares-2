@@ -227,8 +227,10 @@ void_result tap_open_evaluator::do_evaluate(const tap_open_evaluator::operation_
    tnt::query_evaluator query_evaluator;
    query_evaluator.set_query_tank(*tank);
 
-   // Check tap is connected
-   FC_ASSERT(tap_itr->second.connected_sink.valid(), "Cannot open tap: tap is not connected");
+   // Check tap is connected and open is authorized
+   FC_ASSERT(tap.connected_sink.valid(), "Cannot open tap: tap is not connected");
+   if (tap.open_authority.valid())
+      auth_checker.require_auth(*tap.open_authority);
 
    // Evaluate the queries
    for (const auto& query : o.queries) { try {
@@ -237,10 +239,7 @@ void_result tap_open_evaluator::do_evaluate(const tap_open_evaluator::operation_
    } FC_CAPTURE_AND_RETHROW((query)) }
    query_evaluator.apply_queries(db_wrapper->get<tank_object>(tank->id));
 
-   // Create the callbacks for tap flow evaluation
-   tnt::RequireAuthorityCallback cb_auth = [&auth_checker](const authority& auth, tank_id_type) {
-      auth_checker.require_auth(auth);
-   };
+   // Create the callback for tap flow evaluation
    tnt::FundAccountCallback cb_pay = [this](account_id_type account, asset amount, vector<ptnt::sink> path) {
       accounts_to_pay.emplace_back(account, amount, std::move(path));
    };
@@ -248,7 +247,7 @@ void_result tap_open_evaluator::do_evaluate(const tap_open_evaluator::operation_
    // Perform the tap flows
    auto flows =
       tnt::evaluate_tap_flow(*db_wrapper, query_evaluator, o.payer, o.tap_to_open, o.release_amount, o.tap_open_count,
-                             std::move(cb_auth), std::move(cb_pay));
+                             std::move(cb_pay));
    // Check that the declarations matched the requirements
    FC_ASSERT(flows.size() == o.tap_open_count, "Declared count of taps to open does not match count of taps opened");
    auth_checker.check_all_used();

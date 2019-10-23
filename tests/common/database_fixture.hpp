@@ -174,6 +174,22 @@ extern uint32_t GRAPHENE_TESTING_GENESIS_TIMESTAMP;
 #define INITIAL_WITNESS_COUNT (9u)
 #define INITIAL_COMMITTEE_MEMBER_COUNT INITIAL_WITNESS_COUNT
 
+template<typename Expression>
+void expect_exception_string(const std::string& s, Expression e) {
+   try{
+      e();
+      FC_THROW_EXCEPTION(fc::assert_exception, "Expected exception with string ${s}, but no exception thrown",
+                         ("s", s));
+   } catch (const fc::exception& e) {
+      FC_ASSERT(e.to_detail_string().find(s) != std::string::npos,
+                "Did not find expected string '${s}' in exception: ${e}", ("s", s)("e", e));
+   }
+}
+#define EXPECT_EXCEPTION_STRING(S, E) \
+    BOOST_TEST_CHECKPOINT("Expect exception containing string: " S); \
+    expect_exception_string(S, E); \
+    BOOST_TEST_CHECKPOINT("PASSED: Expect exception containing string: " S)
+
 namespace graphene { namespace chain {
 
 class clearable_block : public signed_block {
@@ -373,6 +389,9 @@ struct database_fixture {
    vector< graphene::market_history::order_history_object > get_market_order_history( asset_id_type a, asset_id_type b )const;
    bool validation_current_test_name_for_setting_api_limit( const string& current_test_name )const;
 
+   /// Update the committee parameters using a proposal
+   void set_committee_parameters(chain_parameters new_params);
+
    /****
     * @brief return htlc fee parameters
     */
@@ -381,6 +400,10 @@ struct database_fixture {
     * @brief push through a proposal that sets htlc parameters and fees
     */
    void set_htlc_committee_parameters();
+
+   /// Set the TNT committee parameters and fees (sets default fees for all operation types)
+   void set_tnt_committee_parameters();
+
    /****
     * Hash the preimage and put it in a vector
     * @param preimage the preimage

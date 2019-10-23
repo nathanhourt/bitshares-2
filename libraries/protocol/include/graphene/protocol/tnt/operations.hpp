@@ -27,13 +27,14 @@
 #include <graphene/protocol/base.hpp>
 #include <graphene/protocol/asset.hpp>
 #include <graphene/protocol/tnt/query_api.hpp>
+#include <graphene/protocol/tnt/validation.hpp>
 
 namespace graphene { namespace protocol {
 
 struct tank_create_operation : public base_operation {
    struct fee_parameters_type {
-      uint64_t base_fee = 5 * GRAPHENE_BLOCKCHAIN_PRECISION;
-      uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 10;
+      uint64_t base_fee = 2 * GRAPHENE_BLOCKCHAIN_PRECISION;
+      uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 30;
 
       extensions_type extensions;
    };
@@ -53,6 +54,13 @@ struct tank_create_operation : public base_operation {
 
    extensions_type extensions;
 
+   /// Set the fee and deposit fields appropriately for the tank to be created
+   template<typename DB>
+   void set_fee_and_deposit(const DB& db) {
+      fee = calculate_fee(db.current_fee_schedule().template get<tank_create_operation>());
+      deposit_amount = tnt::tank_validator::calculate_deposit(tnt::tank_schematic::from_create_operation(*this), db);
+   }
+
    account_id_type fee_payer() const { return payer; }
    share_type calculate_fee(const fee_parameters_type& params) const;
    void validate() const;
@@ -62,7 +70,7 @@ struct tank_create_operation : public base_operation {
 struct tank_update_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
-      uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 10;
+      uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 30;
 
       extensions_type extensions;
    };
@@ -132,7 +140,7 @@ struct tank_delete_operation : public base_operation {
 struct tank_query_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
-      uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 10;
+      uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 30;
 
       extensions_type extensions;
    };
@@ -161,7 +169,7 @@ struct tank_query_operation : public base_operation {
 struct tap_open_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
-      uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 10;
+      uint64_t price_per_byte = GRAPHENE_BLOCKCHAIN_PRECISION / 30;
       uint64_t price_per_tap = GRAPHENE_BLOCKCHAIN_PRECISION;
 
       extensions_type extensions;
@@ -275,28 +283,28 @@ struct sink_fund_account_operation : public base_operation {
 
 } } // namespace graphene::protocol
 
-FC_REFLECT(graphene::protocol::tank_create_operation::fee_parameters_type, (base_fee)(price_per_byte))
+FC_REFLECT(graphene::protocol::tank_create_operation::fee_parameters_type, (base_fee)(price_per_byte)(extensions))
 FC_REFLECT(graphene::protocol::tank_create_operation,
            (fee)(payer)(deposit_amount)(contained_asset)(taps)(attachments)(extensions))
-FC_REFLECT(graphene::protocol::tank_update_operation::fee_parameters_type, (base_fee)(price_per_byte))
+FC_REFLECT(graphene::protocol::tank_update_operation::fee_parameters_type, (base_fee)(price_per_byte)(extensions))
 FC_REFLECT(graphene::protocol::tank_update_operation,
            (fee)(payer)(update_authority)(tank_to_update)(deposit_delta)
            (taps_to_remove)(taps_to_replace)(taps_to_add)
            (attachments_to_remove)(attachments_to_replace)(attachments_to_add)(extensions))
-FC_REFLECT(graphene::protocol::tank_delete_operation::fee_parameters_type, (base_fee))
+FC_REFLECT(graphene::protocol::tank_delete_operation::fee_parameters_type, (base_fee)(extensions))
 FC_REFLECT(graphene::protocol::tank_delete_operation,
            (fee)(payer)(delete_authority)(tank_to_delete)(deposit_claimed)(extensions))
-FC_REFLECT(graphene::protocol::tank_query_operation::fee_parameters_type, (base_fee)(price_per_byte))
+FC_REFLECT(graphene::protocol::tank_query_operation::fee_parameters_type, (base_fee)(price_per_byte)(extensions))
 FC_REFLECT(graphene::protocol::tank_query_operation,
            (fee)(payer)(required_authorities)(tank_to_query)(queries)(extensions))
-FC_REFLECT(graphene::protocol::tap_open_operation::fee_parameters_type, (base_fee)(price_per_byte))
+FC_REFLECT(graphene::protocol::tap_open_operation::fee_parameters_type, (base_fee)(price_per_byte)(extensions))
 FC_REFLECT(graphene::protocol::tap_open_operation,
            (fee)(payer)(required_authorities)(queries)(tap_to_open)
            (release_amount)(deposit_claimed)(tap_open_count)(extensions))
-FC_REFLECT(graphene::protocol::tap_connect_operation::fee_parameters_type, (base_fee))
+FC_REFLECT(graphene::protocol::tap_connect_operation::fee_parameters_type, (base_fee)(extensions))
 FC_REFLECT(graphene::protocol::tap_connect_operation,
            (fee)(payer)(connect_authority)(tap_to_connect)(new_sink)(clear_connect_authority)(extensions))
-FC_REFLECT(graphene::protocol::account_fund_sink_operation::fee_parameters_type, (base_fee))
+FC_REFLECT(graphene::protocol::account_fund_sink_operation::fee_parameters_type, (base_fee)(extensions))
 FC_REFLECT(graphene::protocol::account_fund_sink_operation,
            (fee)(funding_account)(funding_destination)(funding_amount)(extensions))
 FC_REFLECT(graphene::protocol::sink_fund_account_operation::fee_parameters_type,)

@@ -30,10 +30,6 @@
 
 namespace graphene { namespace chain { namespace tnt {
 
-/// Callback type used by @ref tap_flow_evaluator to notify the caller that an authority is required to open a tap.
-/// The callback is provided with the authority required and the ID of the tank of the tap requiring the authority
-using RequireAuthorityCallback = std::function<void(const authority&, tank_id_type)>;
-
 /// Details of a particular tap flow
 struct tap_flow {
    /// The amount released from the tap
@@ -57,14 +53,12 @@ struct tap_flow {
  * @param tap_id ID of the tap to open
  * @param flow_amount The amount requested to open the tap for
  * @param max_taps_to_open Maximum number of tap flows to process
- * @param require_auth_cb Callback to require an authority to open a tap
  * @param fund_account_cb Callback to deposit released asset into an account's balance
  * @return List of the tap flows processed
  * @ingroup TNT
  */
 vector<tap_flow> evaluate_tap_flow(cow_db_wrapper& db, const query_evaluator& queries, account_id_type account,
                                    ptnt::tap_id_type tap_to_open, ptnt::asset_flow_limit flow_amount,
-                                   int max_taps_to_open, RequireAuthorityCallback require_auth_cb,
-                                   FundAccountCallback fund_account_cb);
+                                   int max_taps_to_open, FundAccountCallback fund_account_cb);
 
 } } } // namespace graphene::chain::tnt

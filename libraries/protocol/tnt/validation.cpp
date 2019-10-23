@@ -411,10 +411,12 @@ void tank_validator::check_tap_connection(index_type tap_id) const {
                }
             }
          }
+         return;
       }
       // Should never get here (sink_chain result was an unhandled type)
       FC_THROW_EXCEPTION(fc::assert_exception,
-                         "LOGIC ERROR: Unhandled sink chain result type. Please report this error.");
+                         "LOGIC ERROR: Unhandled sink chain result type. Please report this error.",
+                         ("chain type", sink_chain.which()));
    }
 }
 
@@ -539,6 +541,12 @@ share_type tank_validator::calculate_deposit(const parameters_type& parameters) 
                                              parameters.default_tap_requirement_deposit);
 
    return total_deposit;
+}
+
+share_type tank_validator::calculate_deposit(const tank_schematic& schematic, const parameters_type& parameters) {
+   tank_validator val(schematic, parameters.max_sink_chain_length);
+   val.validate_tank();
+   return val.calculate_deposit(parameters);
 }
 
 } } } // namespace graphene::protocol::tnt

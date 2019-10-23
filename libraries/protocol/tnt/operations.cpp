@@ -183,9 +183,6 @@ void tap_open_operation::validate() const {
       FC_ASSERT(release_amount.get<share_type>() > 0 || deposit_claimed.valid(),
                 "Release amount can only be zero if destroying the tank");
    }
-   if (deposit_claimed.valid())
-      FC_ASSERT(release_amount.is_type<tnt::unlimited_flow>() || release_amount.get<share_type>() == 0,
-                "If destroying the tank, release amount must be unlimited or zero (if tank is empty)");
 
    FC_ASSERT(tap_open_count >= 1, "Number of taps to open must be at least one");
 }

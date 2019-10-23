@@ -81,6 +81,14 @@ struct attachment_id_type {
    optional<tank_id_type> tank_id;
    /// ID or index of the attachment on the specified tank
    index_type attachment_id;
+
+   friend bool operator==(const attachment_id_type& a, const attachment_id_type& b) {
+      return std::tie(a.tank_id, a.attachment_id) == std::tie(b.tank_id, b.attachment_id);
+   }
+   friend bool operator!=(const attachment_id_type& a, const attachment_id_type& b) { return !(a==b); }
+   friend bool operator<(const attachment_id_type& a, const attachment_id_type& b) {
+      return std::tie(a.tank_id, a.attachment_id) < std::tie(b.tank_id, b.attachment_id);
+   }
 };
 /// ID type for a tap
 struct tap_id_type {
@@ -88,6 +96,14 @@ struct tap_id_type {
    optional<tank_id_type> tank_id;
    /// ID or index of the tap on the specified tank
    index_type tap_id;
+
+   friend bool operator==(const tap_id_type& a, const tap_id_type& b) {
+      return std::tie(a.tank_id, a.tap_id) == std::tie(b.tank_id, b.tap_id);
+   }
+   friend bool operator!=(const tap_id_type& a, const tap_id_type& b) { return !(a==b); }
+   friend bool operator<(const tap_id_type& a, const tap_id_type& b) {
+      return std::tie(a.tank_id, a.tap_id) < std::tie(b.tank_id, b.tap_id);
+   }
 };
 
 /// An implicit tank ID which refers to the same tank as the item containing the reference
@@ -164,6 +180,9 @@ struct asset_flow_meter {
 
    optional<asset_id_type> receives_asset() const { return asset_type; }
    optional<sink> output_sink() const { return destination_sink; }
+
+   asset_flow_meter(asset_id_type asset_type = {}, sink destination = {}, optional<authority> reset_auth = {})
+      : asset_type(asset_type), destination_sink(std::move(destination)), reset_authority(std::move(reset_auth)) {}
 };
 
 /// Contains several patterns for sources that may deposit to the tank, and rejects any deposit that comes via a path
@@ -201,6 +220,9 @@ struct deposit_source_restrictor {
    /// @param my_tank ID of the tank the deposit_source_restrictor is on
    fc::optional<size_t> get_matching_deposit_path(const deposit_path& path,
                                                   const fc::optional<tank_id_type> &my_tank = {}) const;
+
+   deposit_source_restrictor(vector<deposit_path_pattern> legal_paths = {})
+      : legal_deposit_paths(std::move(legal_paths)) {}
 };
 
 /// Receives asset and immediately releases it to a predetermined sink, scheduling a tap on the tank it is attached
@@ -219,6 +241,10 @@ struct tap_opener {
 
    optional<asset_id_type> receives_asset() const { return asset_type; }
    optional<sink> output_sink() const { return destination_sink; }
+
+   tap_opener(index_type tap_index = 0, asset_flow_limit release_amount = {},
+              sink dest = {}, asset_id_type asset = {})
+      : tap_index(tap_index), release_amount(release_amount), destination_sink(std::move(dest)), asset_type(asset) {}
 };
 
 /// Allows a specified authority to update the sink a specified tank attachment releases processed asset into
@@ -232,6 +258,9 @@ struct attachment_connect_authority {
 
    optional<asset_id_type> receives_asset() const { return {}; }
    optional<sink> output_sink() const { return {}; }
+
+   attachment_connect_authority(authority connect_authority = {}, index_type attachment_id = 0)
+      : connect_authority(std::move(connect_authority)), attachment_id(attachment_id) {}
 };
 /// @}
 
@@ -245,6 +274,8 @@ struct immediate_flow_limit {
    constexpr static tank_accessory_type_enum accessory_type = tap_requirement_accessory_type;
    constexpr static bool unique = true;
    share_type limit;
+
+   immediate_flow_limit(share_type limit = 0) : limit(limit) {}
 };
 
 /// A limit to the cumulative total that can be released through the tap in its lifetime
@@ -257,6 +288,8 @@ struct cumulative_flow_limit {
    };
    /// Limit amount
    share_type limit;
+
+   cumulative_flow_limit(share_type limit = 0) : limit(limit) {}
 };
 
 /// A limit to the cumulative total that can be released through the tap within a given time period
@@ -270,13 +303,16 @@ struct periodic_flow_limit {
       share_type amount_released;
    };
    /// Duration of periods in seconds; the first period begins at the tank's creation date
-   uint32_t period_duration_sec = 0;
+   uint32_t period_duration_sec;
    /// Maximum cumulative amount to release in a given period
    share_type limit;
 
    uint32_t period_num_at_time(const time_point_sec& creation_date, const time_point_sec& time) const {
       return uint32_t((time - creation_date).to_seconds() / period_duration_sec);
    }
+
+   periodic_flow_limit(share_type limit = 0, uint32_t period_duration_sec = 0)
+      : period_duration_sec(period_duration_sec), limit(limit) {}
 };
 
 /// Locks and unlocks the tap at specified times
@@ -290,6 +326,9 @@ struct time_lock {
 
    /// Check whether the time_lock is unlocked at the provided time
    bool unlocked_at_time(const time_point_sec& time) const;
+
+   time_lock(vector<time_point_sec> lock_unlock_times = {}, bool start_locked = false)
+      : start_locked(start_locked), lock_unlock_times(std::move(lock_unlock_times)) {}
 };
 
 /// Prevents tap from draining tank to below a specfied balance
@@ -298,6 +337,8 @@ struct minimum_tank_level {
    constexpr static bool unique = true;
    /// Minimum tank balance
    share_type minimum_level;
+
+   minimum_tank_level(share_type minimum_level = 0) : minimum_level(minimum_level) {}
 };
 
 /// Requires account opening tap to provide a request that must be reviewed and accepted prior to opening tap
@@ -322,7 +363,10 @@ struct review_requirement {
    /// Authority which approves or denies requests
    authority reviewer;
    /// Maximum allowed number of pending requests; zero means no limit
-   index_type request_limit = 0;
+   index_type request_limit;
+
+   review_requirement(authority reviewer = {}, index_type request_limit = 0)
+      : reviewer(std::move(reviewer)), request_limit(request_limit) {}
 };
 
 /// Requires a non-empty documentation argument be provided when opening the tap
@@ -359,6 +403,9 @@ struct delay_requirement {
    uint32_t delay_period_sec = 0;
    /// Maximum allowed number of outstanding requests; zero means no limit
    index_type request_limit = 0;
+
+   delay_requirement(uint32_t delay_period_sec = 0, optional<authority> veto_auth = {}, index_type request_limit = 0)
+      : veto_authority(std::move(veto_auth)), delay_period_sec(delay_period_sec), request_limit(request_limit) {}
 };
 
 /// Requires an argument containing the preimage of a specified hash in order to open the tap
@@ -371,6 +418,9 @@ struct hash_preimage_requirement {
    /// Size of the preimage in bytes; a preimage of a different size will be rejected
    /// If null, a matching preimage of any size will be accepted
    optional<uint16_t> preimage_size;
+
+   hash_preimage_requirement(hash_type hash = {}, optional<uint16_t> preimage_size = {})
+      : hash(std::move(hash)), preimage_size(preimage_size) {}
 };
 
 /// Requires account opening tap to provide a signed ticket authorizing the tap to be opened
@@ -396,6 +446,8 @@ struct ticket_requirement {
    };
    /// Key that must sign tickets to validate them
    public_key_type ticket_signer;
+
+   ticket_requirement(public_key_type signer = {}) : ticket_signer(std::move(signer)) {}
 };
 
 /// Limits the amount released based on the amount that has been deposited to a specified meter and an exchange rate
@@ -422,6 +474,11 @@ struct exchange_requirement {
    share_type max_release_amount(share_type amount_released, const asset_flow_meter::state_type& meter_state) const {
       return meter_state.metered_amount / tick_amount * release_per_tick - amount_released;
    }
+
+   exchange_requirement(attachment_id_type meter_id = {}, share_type release_per_tick = 0, share_type tick_amount = 0,
+                        fc::optional<authority> reset_authority = {})
+      : meter_id(meter_id), release_per_tick(release_per_tick), tick_amount(tick_amount),
+        reset_authority(std::move(reset_authority)) {}
 };
 /// @}
 
