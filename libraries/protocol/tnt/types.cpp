@@ -65,15 +65,16 @@ fc::optional<index_type> tank_schematic::get_deposit_source_restrictor() const {
 fc::optional<size_t> deposit_source_restrictor::get_matching_deposit_path(const deposit_path &path,
                                                                           const fc::optional<tank_id_type>& my_tank)
 const {
-   static_assert(std::is_same<deposit_path_element, static_variant<sink, wildcard_sink>>{},
+   static_assert(std::is_same<deposit_path_element, static_variant<connection, wildcard_connection>>{},
                  "deposit_path_element is not the expected type; update this function to handle the new type");
-   static_assert(std::is_same<sink, static_variant<same_tank, account_id_type, tank_id_type, attachment_id_type>>{},
-                 "sink is not the expected type; update this function to handle the new type");
+   static_assert(std::is_same<connection, static_variant<same_tank, account_id_type, tank_id_type,
+                              attachment_id_type>>{},
+                 "connection is not the expected type; update this function to handle the new type");
    for (size_t i = 0; i < legal_deposit_paths.size(); ++i) {
       const deposit_path_pattern& pattern = legal_deposit_paths[i];
       FC_ASSERT(!pattern.empty(), "LOGIC ERROR: Empty deposit path pattern; please report this error");
       fc::optional<tank_id_type> chain_current_tank;
-      sink_eq eq(my_tank, chain_current_tank);
+      connection_eq eq(my_tank, chain_current_tank);
       auto pattern_element = pattern.begin();
 
       // Check origin; if origin is known...
@@ -85,12 +86,12 @@ const {
             chain_current_tank = path.origin->get<tank_id_type>();
 
          // Match against a wildcard
-         if (pattern_element->is_type<wildcard_sink>()) {
-            if (!pattern_element->get<wildcard_sink>().repeatable) {
+         if (pattern_element->is_type<wildcard_connection>()) {
+            if (!pattern_element->get<wildcard_connection>().repeatable) {
                ++pattern_element;
             }
-         // Match against a sink
-         } else if (eq(pattern_element->get<sink>(), *path.origin)) {
+         // Match against a connection
+         } else if (eq(pattern_element->get<connection>(), *path.origin)) {
             ++pattern_element;
          // No match; move to next pattern
          } else {
@@ -99,33 +100,33 @@ const {
       // Origin unknown
       } else {
          // Match against a wildcard
-         if (pattern_element->is_type<wildcard_sink>()) {
-            if (!pattern_element->get<wildcard_sink>().repeatable) {
+         if (pattern_element->is_type<wildcard_connection>()) {
+            if (!pattern_element->get<wildcard_connection>().repeatable) {
                ++pattern_element;
             }
-         // Match against a sink
+         // Match against a connection
          } else {
             // Unknown origin never matches against an account ID; move to next pattern
-            if (pattern_element->get<sink>().is_type<account_id_type>())
+            if (pattern_element->get<connection>().is_type<account_id_type>())
                continue;
-            // Unknown origin matches against other sinks
+            // Unknown origin matches against other connections
             ++pattern_element;
          }
       }
 
       // Origin is matched; now match path
-      FC_ASSERT(!path.sink_chain.empty(), "LOGIC ERROR: Empty deposit path; please report this error");
-      auto chain_element = path.sink_chain.begin();
+      FC_ASSERT(!path.connection_chain.empty(), "LOGIC ERROR: Empty deposit path; please report this error");
+      auto chain_element = path.connection_chain.begin();
 
-      while (pattern_element != pattern.end() && chain_element != path.sink_chain.end()) {
+      while (pattern_element != pattern.end() && chain_element != path.connection_chain.end()) {
          if (chain_element->get().is_type<attachment_id_type>() &&
              chain_element->get().get<attachment_id_type>().tank_id.valid())
             chain_current_tank = chain_element->get().get<attachment_id_type>().tank_id;
 
          // Pattern is a wildcard, so it matches, but how many?
-         if (pattern_element->is_type<wildcard_sink>()) {
+         if (pattern_element->is_type<wildcard_connection>()) {
             // Non-repeatable wildcard is easy, move both elements forward and go to next loop
-            if (!pattern_element->get<wildcard_sink>().repeatable) {
+            if (!pattern_element->get<wildcard_connection>().repeatable) {
                ++pattern_element;
                ++chain_element;
                continue;
@@ -135,10 +136,10 @@ const {
                // If it's the end, then it's wildcards to the end, so it matches. Return the matching pattern.
                if (++pattern_element == pattern.end())
                   return i;
-               // Get the sink we'll match against next
-               const sink& next_pattern_element = pattern_element->get<sink>();
+               // Get the connection we'll match against next
+               const connection& next_pattern_element = pattern_element->get<connection>();
                // Now we iterate the chain elements looking for one that matches the next pattern element
-               while (chain_element != path.sink_chain.end()) {
+               while (chain_element != path.connection_chain.end()) {
                   // If chain element matches next pattern element, we can leave the wildcard loop
                   if (eq(next_pattern_element, chain_element->get())) {
                      ++pattern_element;
@@ -152,18 +153,18 @@ const {
                break;
             }
          }
-         // Pattern is not a wildcard, so compare the sinks. If they match, move both elements and loop again
-         if (eq(pattern_element->get<sink>(), chain_element->get())) {
+         // Pattern is not a wildcard, so compare the connections. If they match, move both elements and loop again
+         if (eq(pattern_element->get<connection>(), chain_element->get())) {
             ++pattern_element;
             ++chain_element;
             continue;
          }
-         // Pattern is not a wildcard, nor did the sinks match, so this pattern doesn't match. Move to the next one.
+         // Pattern is not a wildcard, nor did the connections match, so this pattern doesn't match. Move to the next
          break;
       }
 
       // Matching is complete. If the entire chain matched the entire pattern, it's a successful match
-      if (pattern_element == pattern.end() && chain_element == path.sink_chain.end())
+      if (pattern_element == pattern.end() && chain_element == path.connection_chain.end())
          return i;
       // Something mismatched before one side or the other reached the end. Loop on to the next pattern...
    }
@@ -184,25 +185,25 @@ bool time_lock::unlocked_at_time(const fc::time_point_sec& time) const {
 }
 
 template<typename L, typename R>
-struct sink_eq_impl {
-   const sink_eq& q;
-   sink_eq_impl(const sink_eq& q) : q(q) {}
+struct connection_eq_impl {
+   const connection_eq& q;
+   connection_eq_impl(const connection_eq& q) : q(q) {}
    bool operator()(const L&, const R&) const {
       return false;
    }
 };
 template<typename T>
-struct sink_eq_impl<T, T> {
-   const sink_eq& q;
-   sink_eq_impl(const sink_eq& q) : q(q) {}
+struct connection_eq_impl<T, T> {
+   const connection_eq& q;
+   connection_eq_impl(const connection_eq& q) : q(q) {}
    bool operator()(const T& left, const T& right) const {
       return left == right;
    }
 };
 template<>
-struct sink_eq_impl<attachment_id_type, attachment_id_type> {
-   const sink_eq& q;
-   sink_eq_impl(const sink_eq& q) : q(q) {}
+struct connection_eq_impl<attachment_id_type, attachment_id_type> {
+   const connection_eq& q;
+   connection_eq_impl(const connection_eq& q) : q(q) {}
    bool operator()(const attachment_id_type& left, const attachment_id_type& right) const {
       if (left.attachment_id != right.attachment_id)
          return false;
@@ -216,17 +217,17 @@ struct sink_eq_impl<attachment_id_type, attachment_id_type> {
    }
 };
 template<>
-struct sink_eq_impl<same_tank, same_tank> {
-   const sink_eq& q;
-   sink_eq_impl(const sink_eq& q) : q(q) {}
+struct connection_eq_impl<same_tank, same_tank> {
+   const connection_eq& q;
+   connection_eq_impl(const connection_eq& q) : q(q) {}
    bool operator()(const same_tank&, const same_tank&) const {
       return q.left_current.valid() && q.right_current.valid() && *q.left_current == *q.right_current;
    }
 };
 template<>
-struct sink_eq_impl<tank_id_type, same_tank> {
-   const sink_eq& q;
-   sink_eq_impl(const sink_eq& q) : q(q) {}
+struct connection_eq_impl<tank_id_type, same_tank> {
+   const connection_eq& q;
+   connection_eq_impl(const connection_eq& q) : q(q) {}
    bool operator()(const tank_id_type& left, const same_tank&) const {
       if (!q.right_current.valid())
          return false;
@@ -234,9 +235,9 @@ struct sink_eq_impl<tank_id_type, same_tank> {
    }
 };
 template<>
-struct sink_eq_impl<same_tank, tank_id_type> {
-   const sink_eq& q;
-   sink_eq_impl(const sink_eq& q) : q(q) {}
+struct connection_eq_impl<same_tank, tank_id_type> {
+   const connection_eq& q;
+   connection_eq_impl(const connection_eq& q) : q(q) {}
    bool operator()(const same_tank&, const tank_id_type& right) const {
       if (!q.left_current.valid())
          return false;
@@ -244,14 +245,15 @@ struct sink_eq_impl<same_tank, tank_id_type> {
    }
 };
 
-bool sink_eq::operator()(const sink &left, const sink &right) const {
-   static_assert(std::is_same<sink, static_variant<same_tank, account_id_type, tank_id_type, attachment_id_type>>{},
-                 "sink is not the expected type; update sink_eq_impl to handle the new type");
-   return fc::typelist::runtime::dispatch(sink::list(), left.which(), [this, &left, &right](auto l) {
+bool connection_eq::operator()(const connection &left, const connection &right) const {
+   static_assert(std::is_same<connection, static_variant<same_tank, account_id_type, tank_id_type,
+                                                         attachment_id_type>>{},
+                 "connection is not the expected type; update connection_eq_impl to handle the new type");
+   return fc::typelist::runtime::dispatch(connection::list(), left.which(), [this, &left, &right](auto l) {
       using Left = typename decltype(l)::type;
-      return fc::typelist::runtime::dispatch(sink::list(), right.which(), [this, &left, &right](auto r) {
+      return fc::typelist::runtime::dispatch(connection::list(), right.which(), [this, &left, &right](auto r) {
          using Right = typename decltype(r)::type;
-         return sink_eq_impl<Left, Right>(*this)(left.get<Left>(), right.get<Right>());
+         return connection_eq_impl<Left, Right>(*this)(left.get<Left>(), right.get<Right>());
       });
    });
 }

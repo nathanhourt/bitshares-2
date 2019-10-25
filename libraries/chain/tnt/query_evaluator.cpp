@@ -33,21 +33,21 @@ namespace qrys = ptnt::queries;
 namespace TL = fc::typelist;
 template<typename...> using make_void = void;
 
-struct set_attachment_sink_inspector {
-   ptnt::sink s;
+struct set_attachment_connection_inspector {
+   ptnt::connection s;
 
-   static set_attachment_sink_inspector with_sink(const ptnt::sink& s) {
-      return set_attachment_sink_inspector{s};
+   static set_attachment_connection_inspector with_connection(const ptnt::connection& s) {
+      return set_attachment_connection_inspector{s};
    }
 
    // Supported attachment types:
-   void operator()(ptnt::asset_flow_meter& meter) const { meter.destination_sink = s; }
-   void operator()(ptnt::tap_opener& opener) const { opener.destination_sink = s; }
+   void operator()(ptnt::asset_flow_meter& meter) const { meter.destination = s; }
+   void operator()(ptnt::tap_opener& opener) const { opener.destination = s; }
 
    // Unsupported attachment types:
    [[noreturn]] void reject() const {
       FC_THROW_EXCEPTION(fc::assert_exception,
-                         "Cannot set sink on unsupported attachment type. Please report this error.");
+                         "Cannot set connection on unsupported attachment type. Please report this error.");
    }
    [[noreturn]] void operator()(ptnt::deposit_source_restrictor&) const { reject(); }
    [[noreturn]] void operator()(ptnt::attachment_connect_authority&) const { reject(); }
@@ -112,21 +112,22 @@ struct reconnect_attachment_evaluator {
       FC_ASSERT(attachment_asset.valid(),
                 "LOGIC ERROR: attachment_connect_authority target cannot receive asset. Please report this error.");
 
-      // Get the asset type the new sink receives
+      // Get the asset type the new connection receives
       ptnt::lookup_utilities lookups(tank.schematic, callbacks.lookup_tank);
-      auto sink_asset = lookups.get_sink_asset(query.query_content.new_sink);
-      if (sink_asset.is_type<asset_id_type>())
-         FC_ASSERT(sink_asset.get<asset_id_type>() == *attachment_asset,
-                   "Cannot reconnect attachment: New sink receives different asset type (${S}) than attachment "
-                   "releases (${A})", ("S", sink_asset.get<asset_id_type>())("A", *attachment_asset));
+      auto connection_asset = lookups.get_connection_asset(query.query_content.new_connection);
+      if (connection_asset.is_type<asset_id_type>())
+         FC_ASSERT(connection_asset.get<asset_id_type>() == *attachment_asset,
+                   "Cannot reconnect attachment: New connection receives different asset type (${S}) than attachment "
+                   "releases (${A})", ("S", connection_asset.get<asset_id_type>())("A", *attachment_asset));
       else
-         FC_ASSERT(sink_asset.is_type<ptnt::any_asset>(),
-                   "Cannot reconnect attachment: New sink is invalid. Error determining sink asset type: ${E}",
-                   ("E", sink_asset));
+         FC_ASSERT(connection_asset.is_type<ptnt::any_asset>(),
+                   "Cannot reconnect attachment: New connection is invalid. "
+                   "Error determining connection asset type: ${E}",
+                   ("E", connection_asset));
    }
    void apply(tank_object& tank) {
       auto& attachment = tank.schematic.attachments.at(query.get_target(tank.schematic).attachment_id);
-      set_attachment_sink_inspector::with_sink(query.query_content.new_sink)(attachment);
+      set_attachment_connection_inspector::with_connection(query.query_content.new_connection)(attachment);
    }
 };
 

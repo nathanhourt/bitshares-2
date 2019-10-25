@@ -59,7 +59,7 @@ add_library( graphene_chain
              tnt/query_evaluator.cpp
              tnt/tap_flow_evaluator.cpp
              tnt/tap_requirement_utility.cpp
-             tnt/sink_flow_processor.cpp
+             tnt/connection_flow_processor.cpp
              account_object.cpp
              asset_object.cpp
              fba_object.cpp

@@ -59,7 +59,7 @@ void set_tap_open_count_and_authorities(const database& db, tap_open_operation& 
       if (std::find(old_auths.begin(), old_auths.end(), auth) == old_auths.end())
          old_auths.emplace_back(std::move(auth));
    };
-   auto pay_account = [](account_id_type, asset, vector<ptnt::sink>) {};
+   auto pay_account = [](account_id_type, asset, vector<ptnt::connection>) {};
 
    if (tap.open_authority.valid())
       add_auth(*tap.open_authority);

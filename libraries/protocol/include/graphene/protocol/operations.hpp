@@ -113,8 +113,8 @@ namespace graphene { namespace protocol {
             tank_query_operation,
             tap_open_operation,
             tap_connect_operation,
-            account_fund_sink_operation,
-            sink_fund_account_operation      // VIRTUAL
+            account_fund_connection_operation,
+            connection_fund_account_operation      // VIRTUAL
          > operation;
 
    /// @} // operations group

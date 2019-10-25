@@ -25,7 +25,7 @@
 
 #include <graphene/chain/tnt/object.hpp>
 #include <graphene/chain/tnt/query_evaluator.hpp>
-#include <graphene/chain/tnt/sink_flow_processor.hpp>
+#include <graphene/chain/tnt/connection_flow_processor.hpp>
 #include <graphene/chain/tnt/cow_db_wrapper.hpp>
 
 namespace graphene { namespace chain { namespace tnt {
@@ -37,10 +37,10 @@ struct tap_flow {
    /// The ID of the tap that released asset
    ptnt::tap_id_type source_tap;
    /// The path of the tap flow, beginning with the source tank
-   vector<ptnt::sink> sink_path;
+   vector<ptnt::connection> connection_path;
 
-   tap_flow(const asset& amount, const ptnt::tap_id_type& tap, vector<ptnt::sink> path)
-      : amount_released(amount), source_tap(tap), sink_path(std::move(path)) {}
+   tap_flow(const asset& amount, const ptnt::tap_id_type& tap, vector<ptnt::connection> path)
+      : amount_released(amount), source_tap(tap), connection_path(std::move(path)) {}
 };
 
 /**

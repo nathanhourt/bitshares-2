@@ -50,7 +50,7 @@ struct hardfork_visitor {
                                 custom_authority_delete_operation>;
    using TNT_ops = TL::list<tank_create_operation, tank_update_operation, tank_delete_operation,
                             tank_query_operation, tap_open_operation, tap_connect_operation,
-                            account_fund_sink_operation, sink_fund_account_operation>;
+                            account_fund_connection_operation, connection_fund_account_operation>;
    fc::time_point_sec now;
 
    hardfork_visitor(fc::time_point_sec now) : now(now) {}

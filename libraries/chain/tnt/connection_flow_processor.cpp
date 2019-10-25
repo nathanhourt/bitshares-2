@@ -22,64 +22,64 @@
  * THE SOFTWARE.
  */
 
-#include <graphene/chain/tnt/sink_flow_processor.hpp>
+#include <graphene/chain/tnt/connection_flow_processor.hpp>
 #include <graphene/chain/is_authorized_asset.hpp>
 
 namespace graphene { namespace chain { namespace tnt {
 
-struct sink_flow_processor_impl {
+struct connection_flow_processor_impl {
    cow_db_wrapper& db;
    TapOpenCallback cbOpenTap;
    FundAccountCallback cbFundAccount;
 
-   sink_flow_processor_impl(cow_db_wrapper& db, TapOpenCallback cbOpenTap, FundAccountCallback cbFundAccount)
+   connection_flow_processor_impl(cow_db_wrapper& db, TapOpenCallback cbOpenTap, FundAccountCallback cbFundAccount)
       : db(db), cbOpenTap(cbOpenTap), cbFundAccount(cbFundAccount) {}
 };
 
-sink_flow_processor::sink_flow_processor(cow_db_wrapper& db, TapOpenCallback cbOpenTap,
+connection_flow_processor::connection_flow_processor(cow_db_wrapper& db, TapOpenCallback cbOpenTap,
                                          FundAccountCallback cbFundAccount) {
-   my = std::make_unique<sink_flow_processor_impl>(db, cbOpenTap, cbFundAccount);
+   my = std::make_unique<connection_flow_processor_impl>(db, cbOpenTap, cbFundAccount);
 }
 
-sink_flow_processor::~sink_flow_processor() = default;
+connection_flow_processor::~connection_flow_processor() = default;
 
 class attachment_receive_inspector {
    tank_object& tank;
    const asset& amount;
-   const sink_flow_processor_impl& data;
-   attachment_receive_inspector(tank_object& tank, const asset& amount, const sink_flow_processor_impl& data)
+   const connection_flow_processor_impl& data;
+   attachment_receive_inspector(tank_object& tank, const asset& amount, const connection_flow_processor_impl& data)
       : tank(tank), amount(amount), data(data) {}
 
    using NonReceivingAttachments =
       ptnt::TL::list<ptnt::deposit_source_restrictor, ptnt::attachment_connect_authority>;
    template<typename Attachment,
             std::enable_if_t<ptnt::TL::contains<NonReceivingAttachments, Attachment>(), bool> = true>
-   [[noreturn]] ptnt::sink operator()(const Attachment&, ptnt::tank_accessory_address<Attachment>) {
+   [[noreturn]] ptnt::connection operator()(const Attachment&, ptnt::tank_accessory_address<Attachment>) {
       FC_THROW_EXCEPTION(fc::assert_exception, "INTERNAL ERROR: Tried to flow asset to an attachment which cannot "
                                                "receive asset. Please report this error.");
    }
 
-   ptnt::sink operator()(const ptnt::asset_flow_meter& meter,
+   ptnt::connection operator()(const ptnt::asset_flow_meter& meter,
                          ptnt::tank_accessory_address<ptnt::asset_flow_meter> address) {
       FC_ASSERT(meter.asset_type == amount.asset_id,
                 "Flowed wrong type of asset to flow meter. Meter expects ${O} but received ${A}",
                 ("O", meter.asset_type)("A", amount.asset_id));
       auto& state = tank.get_or_create_state(address);
       state.metered_amount += amount.amount;
-      return meter.destination_sink;
+      return meter.destination;
    }
-   ptnt::sink operator()(const ptnt::tap_opener& opener,
+   ptnt::connection operator()(const ptnt::tap_opener& opener,
                          ptnt::tank_accessory_address<ptnt::tap_opener>) {
       FC_ASSERT(opener.asset_type == amount.asset_id,
                 "Flowed wrong type of asset to tap opener. Opener expects ${O} but received ${A}",
                 ("O", opener.asset_type)("A", amount.asset_id));
       data.cbOpenTap(ptnt::tap_id_type{tank.id, opener.tap_index}, opener.release_amount);
-      return opener.destination_sink;
+      return opener.destination;
    }
 
 public:
-   static ptnt::sink inspect(tank_object& tank, ptnt::index_type attachment_ID, const asset& amount,
-                             const sink_flow_processor_impl& data) {
+   static ptnt::connection inspect(tank_object& tank, ptnt::index_type attachment_ID, const asset& amount,
+                             const connection_flow_processor_impl& data) {
       attachment_receive_inspector inspector(tank, amount, data);
       const auto& attachment = tank.schematic.attachments.at(attachment_ID);
       return ptnt::TL::runtime::dispatch(ptnt::tank_attachment::list(), attachment.which(),
@@ -89,46 +89,49 @@ public:
    }
 };
 
-vector<ptnt::sink> sink_flow_processor::release_to_sink(ptnt::sink origin, ptnt::sink sink, asset amount) {
-   FC_ASSERT(!origin.is_type<ptnt::same_tank>(), "Cannot process sink flow from origin of 'same_tank'");
-   vector<ptnt::sink> sink_path;
+vector<ptnt::connection> connection_flow_processor::release_to_connection(ptnt::connection origin,
+                                                                          ptnt::connection connection, asset amount) {
+   FC_ASSERT(!origin.is_type<ptnt::same_tank>(), "Cannot process connection flow from origin of 'same_tank'");
+   vector<ptnt::connection> connection_path;
    optional<tank_id_type> current_tank;
    if (origin.is_type<tank_id_type>())
       current_tank = origin.get<tank_id_type>();
 
    try {
-   while (!ptnt::is_terminal_sink(sink)) {
-      auto max_sinks = my->db.get_db().get_global_properties()
-                       .parameters.extensions.value.updatable_tnt_options->max_sink_chain_length;
-      FC_ASSERT(sink_path.size() < max_sinks, "Tap flow has exceeded the maximm sink chain length.");
+   while (!ptnt::is_terminal_connection(connection)) {
+      auto max_connections = my->db.get_db().get_global_properties()
+                       .parameters.extensions.value.updatable_tnt_options->max_connection_chain_length;
+      FC_ASSERT(connection_path.size() < max_connections,
+                "Tap flow has exceeded the maximm connection chain length.");
 
-      // At present, the only non-terminal sink type is a tank attachment
-      ptnt::attachment_id_type att_id = sink.get<ptnt::attachment_id_type>();
+      // At present, the only non-terminal connection type is a tank attachment
+      ptnt::attachment_id_type att_id = connection.get<ptnt::attachment_id_type>();
       if (att_id.tank_id.valid())
          current_tank = *att_id.tank_id;
       else if (current_tank.valid())
          att_id.tank_id = *current_tank;
       else
          FC_THROW_EXCEPTION(fc::assert_exception,
-                            "Could not process sink flow: sink specifies a tank attachment with implied tank ID "
-                            "outside the context of any \"current tank\"");
+                            "Could not process connection flow: connection specifies a tank attachment with implied "
+                            "tank ID outside the context of any \"current tank\"");
 
-      sink_path.emplace_back(std::move(sink));
-      sink = attachment_receive_inspector::inspect(my->db.get(*current_tank), att_id.attachment_id, amount, *my);
+      connection_path.emplace_back(std::move(connection));
+      connection =
+            attachment_receive_inspector::inspect(my->db.get(*current_tank), att_id.attachment_id, amount, *my);
    }
 
-   if (sink.is_type<ptnt::same_tank>()) {
-      FC_ASSERT(current_tank.valid(), "Could not process sink flow: sink specifies a tank attachment with implied "
-                                      "tank ID outside the context of any \"current tank\"");
-      sink = *current_tank;
+   if (connection.is_type<ptnt::same_tank>()) {
+      FC_ASSERT(current_tank.valid(), "Could not process connection flow: connection specifies a tank attachment "
+                                      "with implied tank ID outside the context of any \"current tank\"");
+      connection = *current_tank;
    }
-   // Complete the sink_path
-   sink_path.emplace_back(sink);
+   // Complete the connection_path
+   connection_path.emplace_back(connection);
 
-   // Process deposit to the terminal sink
-   if (sink.is_type<tank_id_type>()) {
-      // Terminal sink is a tank
-      auto dest_tank = sink.get<tank_id_type>()(my->db);
+   // Process deposit to the terminal connection
+   if (connection.is_type<tank_id_type>()) {
+      // Terminal connection is a tank
+      auto dest_tank = connection.get<tank_id_type>()(my->db);
       // Check tank's asset type
       FC_ASSERT(dest_tank.schematic().asset_type() == amount.asset_id,
                 "Destination tank of tap flow stores asset ID ${D}, but tap flow asset ID was ${F}",
@@ -139,26 +142,27 @@ vector<ptnt::sink> sink_flow_processor::release_to_sink(ptnt::sink origin, ptnt:
                                   .get<ptnt::deposit_source_restrictor>();
          ptnt::deposit_source_restrictor::deposit_path path;
          path.origin = origin;
-         path.sink_chain.assign(sink_path.begin(), sink_path.end());
+         path.connection_chain.assign(connection_path.begin(), connection_path.end());
          FC_ASSERT(restrictor.get_matching_deposit_path(path, ((const tank_object&)dest_tank).id));
       }
       // Update tank's balance
       dest_tank.balance = dest_tank.balance() + amount.amount;
-   } else if (sink.is_type<account_id_type>()) {
-      // Terminal sink is an account
-      auto account = sink.get<account_id_type>();
+   } else if (connection.is_type<account_id_type>()) {
+      // Terminal connection is an account
+      auto account = connection.get<account_id_type>();
       // Check account is authorized to hold the asset
       FC_ASSERT(is_authorized_asset(my->db.get_db(), account(my->db.get_db()), amount.asset_id(my->db.get_db())),
-                "Could not process sink flow: terminal sink is an account which is unauthorized to hold the asset");
+                "Could not process connection flow: terminal connection is an account which is unauthorized to hold "
+                "the asset");
       // Use callback to pay the account
-      vector<ptnt::sink> fullPath(sink_path.size() + 1);
+      vector<ptnt::connection> fullPath(connection_path.size() + 1);
       fullPath.emplace_back(origin);
-      fullPath.insert(fullPath.end(), sink_path.begin(), sink_path.end());
+      fullPath.insert(fullPath.end(), connection_path.begin(), connection_path.end());
       my->cbFundAccount(account, amount, std::move(fullPath));
    }
-   } FC_CAPTURE_AND_RETHROW( (sink_path) )
+   } FC_CAPTURE_AND_RETHROW( (connection_path) )
 
-   return sink_path;
+   return connection_path;
 }
 
 } } } // graphene::chain::tnt

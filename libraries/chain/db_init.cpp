@@ -196,7 +196,7 @@ void database::initialize_evaluators()
    register_evaluator<tank_query_evaluator>();
    register_evaluator<tap_open_evaluator>();
    register_evaluator<tap_connect_evaluator>();
-   register_evaluator<account_fund_sink_evaluator>();
+   register_evaluator<account_fund_connection_evaluator>();
 }
 
 void database::initialize_indexes()

@@ -103,14 +103,14 @@ BOOST_FIXTURE_TEST_CASE(basic_tank_test, database_fixture) { try {
    // Tap 1: Nathan can open for up to 100 CORE, goes to Joe
    ptnt::tap tap_1;
    tap_1.open_authority = authority(1, nathan_id, 1);
-   tap_1.connected_sink = joe_id;
+   tap_1.connected_connection = joe_id;
    tap_1.requirements = {ptnt::cumulative_flow_limit(CORE(100))};
    tap_1.destructor_tap = true;
 
    // Tap 2: Joe can open for up to 50 CORE per 10 blocks, goes to Nathan
    ptnt::tap tap_2;
    tap_2.open_authority = authority(1, joe_id, 1);
-   tap_2.connected_sink = nathan_id;
+   tap_2.connected_connection = nathan_id;
    tap_2.requirements = {ptnt::periodic_flow_limit(CORE(50), GRAPHENE_DEFAULT_BLOCK_INTERVAL * 10)};
 
    // Tap 3: A dedicated key can open, unlimited release, goes to Joe via the tap opener causing tap 4 to open as well
@@ -119,12 +119,12 @@ BOOST_FIXTURE_TEST_CASE(basic_tank_test, database_fixture) { try {
    public_key_type tap_3_public_key = tap_3_private_key.get_public_key();
    ptnt::tap tap_3;
    tap_3.open_authority = authority(1, tap_3_public_key, 1);
-   tap_3.connected_sink = ptnt::attachment_id_type{{}, 0};
+   tap_3.connected_connection = ptnt::attachment_id_type{{}, 0};
 
    // Tap 4: No-one can open (the tap opener opens it), goes to Sam
    ptnt::tap tap_4;
    tap_4.open_authority = authority(1);
-   tap_4.connected_sink = sam_id;
+   tap_4.connected_connection = sam_id;
 
    // Create the tank
    tank_create_operation create;
@@ -159,11 +159,11 @@ BOOST_FIXTURE_TEST_CASE(basic_tank_test, database_fixture) { try {
    }
 
    // Add 1000 CORE to the tank
-   account_fund_sink_operation fill;
+   account_fund_connection_operation fill;
    fill.funding_account = nathan_id;
    fill.funding_amount = asset(CORE(1000));
    fill.funding_destination = tank_id;
-   fill.fee = fill.calculate_fee(account_fund_sink_operation::fee_parameters_type());
+   fill.fee = fill.calculate_fee(account_fund_connection_operation::fee_parameters_type());
    trx.clear();
    trx.operations = {fill};
    sign(trx, nathan_private_key);

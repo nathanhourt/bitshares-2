@@ -36,15 +36,16 @@ static_assert(std::is_same<lookup_result<tank_attachment>, \
                            static_variant<const_ref<tank_attachment>, need_lookup_function, nonexistent_object>>{}, \
               "Attachment lookup result has changed; update this function to handle the new type")
 #define CHECK_SINK_ASSET_RESULT() \
-static_assert(std::is_same<sink_asset, static_variant<asset_id_type, any_asset, no_asset, \
+static_assert(std::is_same<connection_asset, static_variant<asset_id_type, any_asset, no_asset, \
                            need_lookup_function, nonexistent_object>>{}, \
-              "Sink asset result has changed; update this function to handle the new type")
+              "Connection asset result has changed; update this function to handle the new type")
 #define CHECK_ATTACHMENT_SINK_RESULT() \
-static_assert(std::is_same<attachment_sink_result, \
-                           static_variant<const_ref<sink>, bad_sink, need_lookup_function, nonexistent_object>>{}, \
-              "Destination sink result has changed; update this function to handle the new type")
+static_assert(std::is_same<attachment_connection_result, \
+                           static_variant<const_ref<connection>, bad_connection, need_lookup_function, \
+                           nonexistent_object>>{}, \
+              "Destination connection result has changed; update this function to handle the new type")
 #define CHECK_SINK_CHAIN_RESULT() \
-static_assert(std::is_same<sink_chain_result, \
-                           static_variant<sink_chain, exceeded_max_chain_length, bad_sink, \
+static_assert(std::is_same<connection_chain_result, \
+                           static_variant<connection_chain, exceeded_max_chain_length, bad_connection, \
                                           need_lookup_function, nonexistent_object>>{}, \
-              "Destination sink result has changed; update this function to handle the new type")
+              "Destination connection result has changed; update this function to handle the new type")

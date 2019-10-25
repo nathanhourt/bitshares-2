@@ -57,14 +57,14 @@ struct reset_meter {
    void validate() const {}
 };
 
-/// Reconnect a tank attachment that receives asset so it deposits asset to a new sink
+/// Reconnect a tank attachment that receives asset so it deposits asset to a new connection
 struct reconnect_attachment {
    using target_type = attachment_connect_authority;
    constexpr static bool tap_open_only = false;
    constexpr static bool unique = true;
 
-   /// The new sink to connect the attachment to
-   sink new_sink;
+   /// The new connection to connect the attachment to
+   connection new_connection;
 
    void validate() const {}
 };
@@ -330,7 +330,7 @@ using tank_query_type = TL::apply<TL::transform<query_type_list, to_targeted_que
 
 FC_REFLECT(graphene::protocol::tnt::tank_query, )
 FC_REFLECT(graphene::protocol::tnt::queries::reset_meter, )
-FC_REFLECT(graphene::protocol::tnt::queries::reconnect_attachment, (new_sink))
+FC_REFLECT(graphene::protocol::tnt::queries::reconnect_attachment, (new_connection))
 FC_REFLECT(graphene::protocol::tnt::queries::create_request_for_review, (request_amount)(comment))
 FC_REFLECT(graphene::protocol::tnt::queries::review_request_to_open, (request_ID)(approved)(comment))
 FC_REFLECT(graphene::protocol::tnt::queries::cancel_request_for_review, (request_ID)(comment))

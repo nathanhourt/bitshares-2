@@ -336,19 +336,19 @@ struct get_impacted_account_visitor
    {
       _impacted.insert(op.payer);
       add_authority_accounts(_impacted, op.connect_authority);
-      if (op.new_sink.valid() && op.new_sink->is_type<account_id_type>())
-         _impacted.insert(op.new_sink->get<account_id_type>());
+      if (op.new_connection.valid() && op.new_connection->is_type<account_id_type>())
+         _impacted.insert(op.new_connection->get<account_id_type>());
    }
-   void operator()( const account_fund_sink_operation& op )
+   void operator()( const account_fund_connection_operation& op )
    {
       _impacted.insert(op.funding_account);
       if (op.funding_destination.is_type<account_id_type>())
          _impacted.insert(op.funding_destination.get<account_id_type>());
    }
-   void operator()( const sink_fund_account_operation& op )
+   void operator()( const connection_fund_account_operation& op )
    {
       _impacted.insert(op.receiving_account);
-      // Asset path should never contain less than two sinks, but we'll check anyways.
+      // Asset path should never contain less than two connections, but we'll check anyways.
       if (op.asset_path.size() > 0 && op.asset_path.front().is_type<account_id_type>())
          _impacted.insert(op.asset_path.front().get<account_id_type>());
    }

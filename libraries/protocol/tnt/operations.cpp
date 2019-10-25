@@ -39,7 +39,7 @@ void tank_create_operation::validate() const {
    FC_ASSERT(fee.amount > 0, "Must have positive fee");
    FC_ASSERT(deposit_amount > 0, "Must have positive deposit");
 
-   // We don't have access to the real limits here, so check with max sink chain length of 100
+   // We don't have access to the real limits here, so check with max connection chain length of 100
    tnt::tank_validator(tnt::tank_schematic::from_create_operation(*this), 100).validate_tank();
 }
 
@@ -60,9 +60,9 @@ void tank_update_operation::validate() const {
    FC_ASSERT(update_authority.weight_threshold > 0, "Update authority must not be trivial");
 
    { // Check no tap IDs are both removed and replaced
-      auto ids_to_replace = boost::adaptors::transform(taps_to_replace, [](const auto& pair) { return pair.first; });
+      auto replaced_ids = boost::adaptors::transform(taps_to_replace, [](const auto& pair) { return pair.first; });
       std::set<tnt::index_type> remove_and_replace;
-      std::set_intersection(ids_to_replace.begin(), ids_to_replace.end(), taps_to_remove.begin(), taps_to_remove.end(),
+      std::set_intersection(replaced_ids.begin(), replaced_ids.end(), taps_to_remove.begin(), taps_to_remove.end(),
                             std::inserter(remove_and_replace, remove_and_replace.begin()));
       FC_ASSERT(remove_and_replace.empty(), "Cannot both remove and replace the same tap");
    }
@@ -191,10 +191,10 @@ void tap_connect_operation::validate() const {
    FC_ASSERT(fee.amount > 0, "Must have positive fee");
    FC_ASSERT(tap_to_connect.tank_id.valid(), "Tank ID must be specified");
    if (clear_connect_authority)
-      FC_ASSERT(new_sink.valid(), "If clearing the connect authority, new sink must be specified");
+      FC_ASSERT(new_connection.valid(), "If clearing the connect authority, new connection must be specified");
 }
 
-void account_fund_sink_operation::validate() const {
+void account_fund_connection_operation::validate() const {
    FC_ASSERT(fee.amount > 0, "Must have positive fee");
    FC_ASSERT(funding_amount.amount > 0, "Must have positive funding amount");
 }

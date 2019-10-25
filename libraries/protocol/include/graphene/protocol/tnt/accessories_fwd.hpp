@@ -58,7 +58,7 @@ using tank_accessory_list = fc::typelist::list<
    /*06*/periodic_flow_limit,
    /*07*/time_lock,
    /*08*/minimum_tank_level,
-   /*19*/review_requirement,
+   /*09*/review_requirement,
    /*10*/documentation_requirement,
    /*11*/delay_requirement,
    /*12*/hash_preimage_requirement,

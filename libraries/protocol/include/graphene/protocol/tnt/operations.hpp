@@ -219,9 +219,9 @@ struct tap_connect_operation : public base_operation {
    /// ID of the tap to reconnect
    tnt::tap_id_type tap_to_connect;
    /// New destination for the tap; if null, tap will be disconnected
-   optional<tnt::sink> new_sink;
-   /// If true, new_sink must not be null, and the tap connect authority will be cleared after this operation and the
-   /// tap will no longer be able to be reconnected
+   optional<tnt::connection> new_connection;
+   /// If true, new_connection must not be null, and the tap connect authority will be cleared after this operation
+   /// and the tap will no longer be able to be reconnected
    /// WARNING: Set this to false unless you really know what you're doing
    bool clear_connect_authority;
 
@@ -235,7 +235,7 @@ struct tap_connect_operation : public base_operation {
    }
 };
 
-struct account_fund_sink_operation : public base_operation {
+struct account_fund_connection_operation : public base_operation {
    struct fee_parameters_type {
       uint64_t base_fee = GRAPHENE_BLOCKCHAIN_PRECISION;
 
@@ -247,8 +247,8 @@ struct account_fund_sink_operation : public base_operation {
    /// Account providing the funds and paying the fee
    account_id_type funding_account;
    /// Destination for the funds
-   tnt::sink funding_destination;
-   /// Amount of asset to deposit into the sink
+   tnt::connection funding_destination;
+   /// Amount of asset to deposit into the connection
    asset funding_amount;
 
    extensions_type extensions;
@@ -258,21 +258,21 @@ struct account_fund_sink_operation : public base_operation {
    void validate() const;
 };
 
-struct sink_fund_account_operation : public base_operation {
+struct connection_fund_account_operation : public base_operation {
    // Virtual operation -- does not charge a fee, so these are unused
    struct fee_parameters_type {};
    asset fee;
 
-   sink_fund_account_operation() = default;
-   sink_fund_account_operation(account_id_type id, const asset& amount, vector<tnt::sink> path)
+   connection_fund_account_operation() = default;
+   connection_fund_account_operation(account_id_type id, const asset& amount, vector<tnt::connection> path)
       : receiving_account(id), amount_received(amount), asset_path(std::move(path)) {}
 
    /// The account receiving the funds
    account_id_type receiving_account;
    /// The amount received
    asset amount_received;
-   /// The path of sinks the asset took to arrive at the account, including the origin
-   vector<tnt::sink> asset_path;
+   /// The path of connections the asset took to arrive at the account, including the origin
+   vector<tnt::connection> asset_path;
 
    extensions_type extensions;
 
@@ -303,10 +303,10 @@ FC_REFLECT(graphene::protocol::tap_open_operation,
            (release_amount)(deposit_claimed)(tap_open_count)(extensions))
 FC_REFLECT(graphene::protocol::tap_connect_operation::fee_parameters_type, (base_fee)(extensions))
 FC_REFLECT(graphene::protocol::tap_connect_operation,
-           (fee)(payer)(connect_authority)(tap_to_connect)(new_sink)(clear_connect_authority)(extensions))
-FC_REFLECT(graphene::protocol::account_fund_sink_operation::fee_parameters_type, (base_fee)(extensions))
-FC_REFLECT(graphene::protocol::account_fund_sink_operation,
+           (fee)(payer)(connect_authority)(tap_to_connect)(new_connection)(clear_connect_authority)(extensions))
+FC_REFLECT(graphene::protocol::account_fund_connection_operation::fee_parameters_type, (base_fee)(extensions))
+FC_REFLECT(graphene::protocol::account_fund_connection_operation,
            (fee)(funding_account)(funding_destination)(funding_amount)(extensions))
-FC_REFLECT(graphene::protocol::sink_fund_account_operation::fee_parameters_type,)
-FC_REFLECT(graphene::protocol::sink_fund_account_operation,
+FC_REFLECT(graphene::protocol::connection_fund_account_operation::fee_parameters_type,)
+FC_REFLECT(graphene::protocol::connection_fund_account_operation,
            (receiving_account)(amount_received)(asset_path)(extensions))

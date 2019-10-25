@@ -108,32 +108,32 @@ struct tap_id_type {
 
 /// An implicit tank ID which refers to the same tank as the item containing the reference
 struct same_tank{};
-/// A variant of ID types for all possible asset receivers
-using sink = static_variant<same_tank, account_id_type, tank_id_type, attachment_id_type>;
+/// A pipeline over which asset can flow. A connection specifies a location that asset can send or receive from.
+using connection = static_variant<same_tank, account_id_type, tank_id_type, attachment_id_type>;
 
-/// @brief Check if sink is a terminal sink or not
+/// @brief Check if connection is a terminal connection or not
 ///
-/// Sinks can either be terminal sinks, meaning they represent a depository that can store asset over time, or not,
-/// meaning they represent a structure that receives asset, but immediately deposits it to another sink. At present,
-/// only a tank attachment sink is a non-terminal sink
-inline bool is_terminal_sink(const sink& s) { return !s.is_type<attachment_id_type>(); }
+/// Connections can either be terminal connections, meaning they represent a depository that can store asset over
+/// time, or not, meaning they represent a structure that receives asset, but immediately deposits it to another
+/// connection. At present, only a tank attachment connection is a non-terminal connection
+inline bool is_terminal_connection(const connection& s) { return !s.is_type<attachment_id_type>(); }
 
-/// Comparator to check equality of two sinks
+/// Comparator to check equality of two connections
 ///
-/// Aside from the fact that static_variant comparison is rather annoying in general, sink comparison is also tricky
-/// due to the @ref same_tank type, which is contextually defined. Thus to create this comparator, it is necessary to
-/// specify the left and right side's "current_tank" values so they can be compared if either or both sides are
-/// same_tank. Note that these values are taken by reference, so updates to the referenced values will be reflected
-/// in the comparator's results. Note also that these values are optional, but must be defined to yield a matching
-/// result; in particular, if both are null, they are still regarded as unequal.
-struct sink_eq {
+/// Aside from the fact that static_variant comparison is rather annoying in general, connection comparison is also
+/// tricky due to the @ref same_tank type, which is contextually defined. Thus to create this comparator, it is
+/// necessary to specify the left and right side's "current_tank" values so they can be compared if either or both
+/// sides are same_tank. Note that these values are taken by reference, so updates to the referenced values will be
+/// reflected in the comparator's results. Note also that these values are optional, but must be defined to yield a
+/// matching result; in particular, if both are null, they are still regarded as unequal.
+struct connection_eq {
    const fc::optional<tank_id_type>& left_current;
    const fc::optional<tank_id_type>& right_current;
 
-   sink_eq(const fc::optional<tank_id_type>& left_current, const fc::optional<tank_id_type>& right_current)
+   connection_eq(const fc::optional<tank_id_type>& left_current, const fc::optional<tank_id_type>& right_current)
        : left_current(left_current), right_current(right_current) {}
 
-   bool operator()(const sink& left, const sink& right) const;
+   bool operator()(const connection& left, const connection& right) const;
 };
 
 struct unlimited_flow{};
@@ -158,12 +158,12 @@ inline bool operator<=(const asset_flow_limit& a, const asset_flow_limit& b) {
 /// Tank attachments must all provide the following methods in their interface:
 /// If the attachment can receive asset, returns the type received; otherwise, returns null
 /// optional<asset_id_type> receives_asset() const;
-/// If the attachment can receive asset, returns the sink the asset is deposited to; otherwise, returns null
-/// optional<sink> output_sink() const;
+/// If the attachment can receive asset, returns the connection the asset is deposited to; otherwise, returns null
+/// optional<connection> output_connection() const;
 /// @{
 
-/// Receives asset and immediately releases it to a predetermined sink, maintaining a tally of the total amount that
-/// has flowed through
+/// Receives asset and immediately releases it to a predetermined connection, maintaining a tally of the total amount
+/// that has flowed through
 struct asset_flow_meter {
    constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
    constexpr static bool unique = false;
@@ -173,16 +173,16 @@ struct asset_flow_meter {
    };
    /// The type of asset which can flow through this meter
    asset_id_type asset_type;
-   /// The sink which the metered asset is released to
-   sink destination_sink;
+   /// The connection which the metered asset is released to
+   connection destination;
    /// The authority which may reset the meter; if null, only the emergency tap authority is accepted
    optional<authority> reset_authority;
 
    optional<asset_id_type> receives_asset() const { return asset_type; }
-   optional<sink> output_sink() const { return destination_sink; }
+   optional<connection> output_connection() const { return destination; }
 
-   asset_flow_meter(asset_id_type asset_type = {}, sink destination = {}, optional<authority> reset_auth = {})
-      : asset_type(asset_type), destination_sink(std::move(destination)), reset_authority(std::move(reset_auth)) {}
+   asset_flow_meter(asset_id_type asset_type = {}, connection destination = {}, optional<authority> reset_auth = {})
+      : asset_type(asset_type), destination(std::move(destination)), reset_authority(std::move(reset_auth)) {}
 };
 
 /// Contains several patterns for sources that may deposit to the tank, and rejects any deposit that comes via a path
@@ -190,15 +190,15 @@ struct asset_flow_meter {
 struct deposit_source_restrictor {
    constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
    constexpr static bool unique = true;
-   /// This type defines a wildcard sink type, which matches against any sink(s)
-   struct wildcard_sink {
-      /// If true, wildcard matches any number of sinks; otherwise, matches exactly one
+   /// This type defines a wildcard connection type, which matches against any connection(s)
+   struct wildcard_connection {
+      /// If true, wildcard matches any number of connections; otherwise, matches exactly one
       bool repeatable;
    };
-   /// A deposit path element may be a specific sink, or a wildcard to match any sink
-   using deposit_path_element = static_variant<sink, wildcard_sink>;
-   /// A deposit path is a sequence of sinks; a deposit path pattern is a series of sinks that incoming deposits
-   /// must have flowed through, which may include wildcards that will match against any sink(s)
+   /// A deposit path element may be a specific connection, or a wildcard to match any connection
+   using deposit_path_element = static_variant<connection, wildcard_connection>;
+   /// A deposit path is a sequence of connections; a deposit path pattern is a series of connections that incoming
+   /// deposits must have flowed through, which may include wildcards that will match against any connection(s)
    using deposit_path_pattern = vector<deposit_path_element>;
 
    /// A list of path patterns that a deposit is checked against; if a deposit's path doesn't match any pattern, it
@@ -206,14 +206,14 @@ struct deposit_source_restrictor {
    vector<deposit_path_pattern> legal_deposit_paths;
 
    optional<asset_id_type> receives_asset() const { return {}; }
-   optional<sink> output_sink() const { return {}; }
+   optional<connection> output_connection() const { return {}; }
 
    /// A deposit path, which is matched against the @ref legal_deposit_paths
    struct deposit_path {
       /// The origin of the deposit, if known. If omitted, the origin will match any tank ID, but no account ID
-      fc::optional<sink> origin;
-      /// The full sink chain that the origin deposited into; this is checked even if the origin is omitted
-      vector<std::reference_wrapper<const sink>> sink_chain;
+      fc::optional<connection> origin;
+      /// The full connection chain that the origin deposited into; this is checked even if the origin is omitted
+      vector<std::reference_wrapper<const connection>> connection_chain;
    };
    /// @brief Check if the provided path matches any legal deposit path, and if so, return its index
    /// @param path The path the deposit took
@@ -225,8 +225,8 @@ struct deposit_source_restrictor {
       : legal_deposit_paths(std::move(legal_paths)) {}
 };
 
-/// Receives asset and immediately releases it to a predetermined sink, scheduling a tap on the tank it is attached
-/// to to be opened once the received asset stops moving
+/// Receives asset and immediately releases it to a predetermined connection, scheduling a tap on the tank it is
+/// attached to to be opened once the received asset stops moving
 struct tap_opener {
    constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
    constexpr static bool unique = false;
@@ -234,20 +234,20 @@ struct tap_opener {
    index_type tap_index;
    /// The amount to release
    asset_flow_limit release_amount;
-   /// The sink that asset is released to after flowing through the opener
-   sink destination_sink;
+   /// The connection that asset is released to after flowing through the opener
+   connection destination;
    /// The type of asset which can flow through the opener
    asset_id_type asset_type;
 
    optional<asset_id_type> receives_asset() const { return asset_type; }
-   optional<sink> output_sink() const { return destination_sink; }
+   optional<connection> output_connection() const { return destination; }
 
    tap_opener(index_type tap_index = 0, asset_flow_limit release_amount = {},
-              sink dest = {}, asset_id_type asset = {})
-      : tap_index(tap_index), release_amount(release_amount), destination_sink(std::move(dest)), asset_type(asset) {}
+              connection dest = {}, asset_id_type asset = {})
+      : tap_index(tap_index), release_amount(release_amount), destination(std::move(dest)), asset_type(asset) {}
 };
 
-/// Allows a specified authority to update the sink a specified tank attachment releases processed asset into
+/// Allows a specified authority to update the connection a specified tank attachment releases processed asset into
 struct attachment_connect_authority {
    constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
    constexpr static bool unique = false;
@@ -257,7 +257,7 @@ struct attachment_connect_authority {
    index_type attachment_id;
 
    optional<asset_id_type> receives_asset() const { return {}; }
-   optional<sink> output_sink() const { return {}; }
+   optional<connection> output_connection() const { return {}; }
 
    attachment_connect_authority(authority connect_authority = {}, index_type attachment_id = 0)
       : connect_authority(std::move(connect_authority)), attachment_id(attachment_id) {}
@@ -491,8 +491,8 @@ using tank_accessory_state = TL::apply<TL::transform<stateful_accessory_list, im
 /// A structure on a tank which allows asset to be released from that tank by a particular authority with limits and
 /// requirements restricting when, why, and how much asset can be released
 struct tap {
-   /// The connected sink; if omitted, connect_authority must be specified
-   optional<sink> connected_sink;
+   /// The connected connection; if omitted, connect_authority must be specified
+   optional<connection> connected_connection;
    /// The authority to open the tap; if null, anyone can open the tap if they can satisfy the requirements --
    /// emergency tap must specify an open authority
    optional<authority> open_authority;
@@ -539,10 +539,10 @@ FC_REFLECT(graphene::protocol::tnt::unlimited_flow,)
 FC_REFLECT(graphene::protocol::tnt::same_tank,)
 
 FC_REFLECT(graphene::protocol::tnt::asset_flow_meter::state_type, (metered_amount))
-FC_REFLECT(graphene::protocol::tnt::asset_flow_meter, (asset_type)(destination_sink)(reset_authority))
-FC_REFLECT(graphene::protocol::tnt::deposit_source_restrictor::wildcard_sink, (repeatable))
+FC_REFLECT(graphene::protocol::tnt::asset_flow_meter, (asset_type)(destination)(reset_authority))
+FC_REFLECT(graphene::protocol::tnt::deposit_source_restrictor::wildcard_connection, (repeatable))
 FC_REFLECT(graphene::protocol::tnt::deposit_source_restrictor, (legal_deposit_paths))
-FC_REFLECT(graphene::protocol::tnt::tap_opener, (tap_index)(release_amount)(destination_sink)(asset_type))
+FC_REFLECT(graphene::protocol::tnt::tap_opener, (tap_index)(release_amount)(destination)(asset_type))
 FC_REFLECT(graphene::protocol::tnt::attachment_connect_authority, (connect_authority)(attachment_id))
 
 FC_REFLECT(graphene::protocol::tnt::immediate_flow_limit, (limit))
@@ -570,12 +570,12 @@ FC_REFLECT(graphene::protocol::tnt::ticket_requirement, (ticket_signer))
 FC_REFLECT(graphene::protocol::tnt::exchange_requirement::state_type, (amount_released))
 FC_REFLECT(graphene::protocol::tnt::exchange_requirement, (meter_id)(release_per_tick)(tick_amount)(reset_authority))
 FC_REFLECT(graphene::protocol::tnt::tap,
-           (connected_sink)(open_authority)(connect_authority)(requirements)(destructor_tap))
+           (connected_connection)(open_authority)(connect_authority)(requirements)(destructor_tap))
 FC_REFLECT(graphene::protocol::tnt::tank_schematic,
            (taps)(tap_counter)(attachments)(attachment_counter)(asset_type))
 
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::hash_preimage_requirement::hash_type)
-FC_REFLECT_TYPENAME(graphene::protocol::tnt::sink)
+FC_REFLECT_TYPENAME(graphene::protocol::tnt::connection)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::asset_flow_limit)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::deposit_source_restrictor::deposit_path_element)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::deposit_source_restrictor::deposit_path_pattern)

@@ -54,7 +54,7 @@ void_result tank_create_evaluator::do_evaluate(const tank_create_operation& o) {
              "Insufficient balance to pay the deposit");
 
    new_tank = ptnt::tank_schematic::from_create_operation(o);
-   ptnt::tank_validator validator(new_tank, tnt_parameters->max_sink_chain_length, make_lookup(d));
+   ptnt::tank_validator validator(new_tank, tnt_parameters->max_connection_chain_length, make_lookup(d));
    validator.validate_tank();
    FC_ASSERT(validator.calculate_deposit(*tnt_parameters) == o.deposit_amount, "Incorrect deposit amount");
 
@@ -82,7 +82,8 @@ void_result tank_update_evaluator::do_evaluate(const tank_update_evaluator::oper
              "Tank update authority is incorrect");
    updated_tank = old_tank->schematic;
    updated_tank.update_from_operation(o);
-   ptnt::tank_validator validator(updated_tank, tnt_parameters->max_sink_chain_length, make_lookup(d), old_tank->id);
+   ptnt::tank_validator validator(updated_tank, tnt_parameters->max_connection_chain_length,
+                                  make_lookup(d), old_tank->id);
    validator.validate_tank();
 
    auto new_deposit = validator.calculate_deposit(*tnt_parameters);
@@ -228,7 +229,7 @@ void_result tap_open_evaluator::do_evaluate(const tap_open_evaluator::operation_
    query_evaluator.set_query_tank(*tank);
 
    // Check tap is connected and open is authorized
-   FC_ASSERT(tap.connected_sink.valid(), "Cannot open tap: tap is not connected");
+   FC_ASSERT(tap.connected_connection.valid(), "Cannot open tap: tap is not connected");
    if (tap.open_authority.valid())
       auth_checker.require_auth(*tap.open_authority);
 
@@ -240,7 +241,7 @@ void_result tap_open_evaluator::do_evaluate(const tap_open_evaluator::operation_
    query_evaluator.apply_queries(db_wrapper->get<tank_object>(tank->id));
 
    // Create the callback for tap flow evaluation
-   tnt::FundAccountCallback cb_pay = [this](account_id_type account, asset amount, vector<ptnt::sink> path) {
+   tnt::FundAccountCallback cb_pay = [this](account_id_type account, asset amount, vector<ptnt::connection> path) {
       accounts_to_pay.emplace_back(account, amount, std::move(path));
    };
 
@@ -296,7 +297,7 @@ void_result tap_connect_evaluator::do_apply(const tap_connect_evaluator::operati
    database& d = db();
    d.modify(*tank, [&o](tank_object& tank) {
       ptnt::tap& tap = tank.schematic.taps[o.tap_to_connect.tap_id];
-      tap.connected_sink = o.new_sink;
+      tap.connected_connection = o.new_connection;
       if (o.clear_connect_authority)
          tap.connect_authority.reset();
    });
@@ -304,7 +305,8 @@ void_result tap_connect_evaluator::do_apply(const tap_connect_evaluator::operati
    return {};
 }
 
-void_result account_fund_sink_evaluator::do_evaluate(const account_fund_sink_evaluator::operation_type& o) {
+void_result account_fund_connection_evaluator::do_evaluate(const account_fund_connection_evaluator::operation_type& o)
+{
    const database& d = db();
    FC_ASSERT(HARDFORK_BSIP_72_PASSED(d.head_block_time()), "Tanks and Taps is not yet enabled on this blockchain");
    db_wrapper = std::make_unique<cow_db_wrapper>(d);
@@ -313,25 +315,25 @@ void_result account_fund_sink_evaluator::do_evaluate(const account_fund_sink_eva
 
    // Check account balance
    FC_ASSERT(d.get_balance(o.funding_account, o.funding_amount.asset_id) >= o.funding_amount,
-             "Cannot fund sink: account has insufficient balance");
+             "Cannot fund connection: account has insufficient balance");
 
-   // Create the callbacks for sink flow processing
+   // Create the callbacks for connection flow processing
    tnt::TapOpenCallback cb_open = [](ptnt::tap_id_type, ptnt::asset_flow_limit) {
       FC_THROW_EXCEPTION(fc::assert_exception,
-                         "Opening taps from within account_fund_sink_operation is not currently supported");
+                         "Opening taps from within account_fund_connection_operation is not currently supported");
    };
-   tnt::FundAccountCallback cb_pay = [this](account_id_type account, asset amount, vector<ptnt::sink> path) {
+   tnt::FundAccountCallback cb_pay = [this](account_id_type account, asset amount, vector<ptnt::connection> path) {
       accounts_to_pay.emplace_back(account, amount, std::move(path));
    };
 
    // Process the flow
-   tnt::sink_flow_processor flow_processor(*db_wrapper, std::move(cb_open), std::move(cb_pay));
-   flow_processor.release_to_sink(o.funding_account, o.funding_destination, o.funding_amount);
+   tnt::connection_flow_processor flow_processor(*db_wrapper, std::move(cb_open), std::move(cb_pay));
+   flow_processor.release_to_connection(o.funding_account, o.funding_destination, o.funding_amount);
 
    return {};
 }
 
-void_result account_fund_sink_evaluator::do_apply(const account_fund_sink_evaluator::operation_type& o) {
+void_result account_fund_connection_evaluator::do_apply(const account_fund_connection_evaluator::operation_type& o) {
    database& d = db();
 
    db_wrapper->commit(d);

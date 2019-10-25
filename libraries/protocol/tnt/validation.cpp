@@ -41,26 +41,26 @@ struct internal_attachment_checker {
       FC_ASSERT(att.legal_deposit_paths.size() > 0,
                 "Deposit source restrictor must accept at least one deposit path");
       using path_pattern = deposit_source_restrictor::deposit_path_pattern;
-      using wildcard_element = deposit_source_restrictor::wildcard_sink;
+      using wildcard_element = deposit_source_restrictor::wildcard_connection;
       std::for_each(att.legal_deposit_paths.begin(), att.legal_deposit_paths.end(),
                     [](const path_pattern& path) { try {
          FC_ASSERT(path.size() > 1,
                    "Deposit path patterns must contain at least two elements for a source, and a destination");
          if (!path.front().is_type<wildcard_element>())
-            FC_ASSERT(is_terminal_sink(path.front().get<sink>()),
-                      "Deposit path patterns must begin with a terminal sink or a wildcard");
+            FC_ASSERT(is_terminal_connection(path.front().get<connection>()),
+                      "Deposit path patterns must begin with a terminal connection or a wildcard");
          if (!path.back().is_type<wildcard_element>()) {
-            const sink& final_sink = path.back().get<sink>();
-            FC_ASSERT(is_terminal_sink(final_sink),
-                      "Deposit path patterns must end with a terminal sink or a wildcard");
-            FC_ASSERT(final_sink.is_type<same_tank>() || final_sink.is_type<tank_id_type>(),
+            const connection& final_connection = path.back().get<connection>();
+            FC_ASSERT(is_terminal_connection(final_connection),
+                      "Deposit path patterns must end with a terminal connection or a wildcard");
+            FC_ASSERT(final_connection.is_type<same_tank>() || final_connection.is_type<tank_id_type>(),
                       "Deposit path patterns must end with the current tank or a wildcard");
          }
          if (path.size() < 3)
             FC_ASSERT(!path.front().is_type<wildcard_element>(),
                       "A single wildcard is not a valid deposit source restrictor pattern");
          for (size_t i = 0; i < path.size(); ++i) {
-            using wildcard = deposit_source_restrictor::wildcard_sink;
+            using wildcard = deposit_source_restrictor::wildcard_connection;
             if (i > 0 && path[i].is_type<wildcard>() && path[i-1].is_type<wildcard>())
                FC_ASSERT(!path[i].get<wildcard>().repeatable && !path[i-1].get<wildcard>().repeatable,
                          "A repeatable wildcard in a deposit path pattern cannot be adjacent to another wildcard");
@@ -129,19 +129,19 @@ struct internal_requirement_checker {
 struct impacted_accounts_visitor {
    flat_set<account_id_type>& accounts;
 
-   // Sink
-   void operator()(const sink& s) const {
+   // Connection
+   void operator()(const connection& s) const {
       if (s.is_type<account_id_type>()) accounts.insert(s.get<account_id_type>());
    }
 
    // Tank attachments
-   void operator()(const asset_flow_meter& afm) const { (*this)(afm.destination_sink); }
+   void operator()(const asset_flow_meter& afm) const { (*this)(afm.destination); }
    void operator()(const deposit_source_restrictor& dsr) const {
       for (const auto& pattern : dsr.legal_deposit_paths)
          for (const auto& element : pattern)
-            if (element.is_type<sink>()) (*this)(element.get<sink>());
+            if (element.is_type<connection>()) (*this)(element.get<connection>());
    }
-   void operator()(const tap_opener& top) const { (*this)(top.destination_sink); }
+   void operator()(const tap_opener& top) const { (*this)(top.destination); }
    void operator()(const attachment_connect_authority& aca) const {
       add_authority_accounts(accounts, aca.connect_authority);
    }
@@ -178,7 +178,7 @@ struct impacted_accounts_visitor {
    void operator()(const tap& tap) const {
       if (tap.open_authority.valid()) add_authority_accounts(accounts, *tap.open_authority);
       if (tap.connect_authority.valid()) add_authority_accounts(accounts, *tap.connect_authority);
-      if (tap.connected_sink.valid()) (*this)(*tap.connected_sink);
+      if (tap.connected_connection.valid()) (*this)(*tap.connected_connection);
       for (const auto& req : tap.requirements) (*this)(req);
    }
 };
@@ -188,36 +188,37 @@ void tank_validator::validate_attachment(index_type attachment_id) {
    struct {
       tank_validator& validator;
 
-      // Helper function: Verify that the provided sink accepts the provided asset
-      void check_sink_asset(const sink& s, asset_id_type a) {
+      // Helper function: Verify that the provided connection accepts the provided asset
+      void check_connection_asset(const connection& s, asset_id_type a) {
          CHECK_SINK_ASSET_RESULT();
-         auto asset_result = validator.get_sink_asset(s);
+         auto asset_result = validator.get_connection_asset(s);
          if (asset_result.is_type<no_asset>())
-            FC_THROW_EXCEPTION(fc::assert_exception, "Flow meter destination sink cannot receive asset: ${S}",
+            FC_THROW_EXCEPTION(fc::assert_exception, "Flow meter destination connection cannot receive asset: ${S}",
                                ("S", s));
          if (asset_result.is_type<nonexistent_object>())
-            FC_THROW_EXCEPTION(fc::assert_exception, "Flow meter destination sink does not exist: ${E}",
+            FC_THROW_EXCEPTION(fc::assert_exception, "Flow meter destination connection does not exist: ${E}",
                                ("E", asset_result.get<nonexistent_object>()));
          if (asset_result.is_type<asset_id_type>())
-            FC_ASSERT(asset_result.get<asset_id_type>() == a, "Flow meter destination sink accepts wrong asset type");
+            FC_ASSERT(asset_result.get<asset_id_type>() == a,
+                      "Flow meter destination connection accepts wrong asset type");
       }
 
       // vvvv THE ACTUAL ATTACHMENT VALIDATORS vvvv
       void operator()(const asset_flow_meter& att) {
          internal_attachment_checker()(att);
-         check_sink_asset(att.destination_sink, att.asset_type);
+         check_connection_asset(att.destination, att.asset_type);
          ++validator.attachment_counters[tank_attachment::tag<asset_flow_meter>::value];
       }
       void operator()(const deposit_source_restrictor& att) {
          internal_attachment_checker()(att);
          using path_pattern = deposit_source_restrictor::deposit_path_pattern;
-         using wildcard_element = deposit_source_restrictor::wildcard_sink;
+         using wildcard_element = deposit_source_restrictor::wildcard_connection;
          std::for_each(att.legal_deposit_paths.begin(), att.legal_deposit_paths.end(),
                        [this](const path_pattern& path) { try {
             if (!path.back().is_type<wildcard_element>()) {
-               const sink& final_sink = path.back().get<sink>();
-               if (final_sink.is_type<tank_id_type>())
-                  FC_ASSERT(validator.tank_id.valid() && final_sink.get<tank_id_type>() == *validator.tank_id,
+               const connection& final_connection = path.back().get<connection>();
+               if (final_connection.is_type<tank_id_type>())
+                  FC_ASSERT(validator.tank_id.valid() && final_connection.get<tank_id_type>() == *validator.tank_id,
                             "Deposit path patterns must end with the current tank or a wildcard");
             }
          } FC_CAPTURE_AND_RETHROW((path)) });
@@ -226,7 +227,7 @@ void tank_validator::validate_attachment(index_type attachment_id) {
       void operator()(const tap_opener& att) {
          internal_attachment_checker()(att);
          FC_ASSERT(validator.current_tank.taps.count(att.tap_index) > 0, "Tap opener references nonexistent tap");
-         check_sink_asset(att.destination_sink, att.asset_type);
+         check_connection_asset(att.destination, att.asset_type);
          ++validator.attachment_counters[tank_attachment::tag<tap_opener>::value];
       }
       void operator()(const attachment_connect_authority& att) {
@@ -346,54 +347,57 @@ void tank_validator::check_tap_connection(index_type tap_id) const {
    FC_ASSERT(current_tank.taps.count(tap_id) > 0, "Requested tap does not exist");
    const auto& tap = current_tank.taps.at(tap_id);
    // If tap is connected...
-   if (tap.connected_sink.valid()) {
-      // ...get the sink chain it connects to
+   if (tap.connected_connection.valid()) {
+      // ...get the connection chain it connects to
       CHECK_SINK_CHAIN_RESULT();
-      auto sink_chain = get_sink_chain(*tap.connected_sink, max_sink_chain_length, current_tank.asset_type);
+      auto connection_chain = get_connection_chain(*tap.connected_connection, max_connection_chain_length,
+                                                   current_tank.asset_type);
 
       // Check error conditions
-      FC_ASSERT(!sink_chain.is_type<exceeded_max_chain_length>(),
-                "Tap connects to sink chain which exceeds maximum length limit");
-      if (sink_chain.is_type<bad_sink>()) {
-         bad_sink bs = sink_chain.get<bad_sink>();
-         if (bs.reason == bad_sink::receives_no_asset)
+      FC_ASSERT(!connection_chain.is_type<exceeded_max_chain_length>(),
+                "Tap connects to connection chain which exceeds maximum length limit");
+      if (connection_chain.is_type<bad_connection>()) {
+         bad_connection bs = connection_chain.get<bad_connection>();
+         if (bs.reason == bad_connection::receives_no_asset)
             FC_THROW_EXCEPTION(fc::assert_exception,
-                               "Tap connects to sink chain with a sink that cannot receive asset; sink: ${S}",
+                               "Tap connects to connection chain with a connection that cannot receive asset; "
+                               "connection: ${S}",
                                ("S", bs.s));
-         if (bs.reason == bad_sink::receives_wrong_asset)
+         if (bs.reason == bad_connection::receives_wrong_asset)
             FC_THROW_EXCEPTION(fc::assert_exception,
-                               "Tap connects to sink chain with a sink that receives wrong asset; sink: ${S}",
+                               "Tap connects to connection chain with a connection that receives wrong asset; "
+                               "connection: ${S}",
                                ("S", bs.s));
          FC_THROW_EXCEPTION(fc::assert_exception,
-                            "Tap connects to sink chain that failed validation for an unknown reason. "
-                            "Please report this error. Bad sink: ${S}", ("S", bs));
+                            "Tap connects to connection chain that failed validation for an unknown reason. "
+                            "Please report this error. Bad connection: ${S}", ("S", bs));
       }
-      FC_ASSERT(!sink_chain.is_type<nonexistent_object>(),
-                "Tap connects to sink chain which references nonexistent object: ${O}",
-                ("O", sink_chain.get<nonexistent_object>()));
+      FC_ASSERT(!connection_chain.is_type<nonexistent_object>(),
+                "Tap connects to connection chain which references nonexistent object: ${O}",
+                ("O", connection_chain.get<nonexistent_object>()));
 
-      // No error, so it should be a real sink chahin
-      if (sink_chain.is_type<tnt::sink_chain>()) {
-         auto& real_sink_chain = sink_chain.get<tnt::sink_chain>();
-         // Sanity check (even if the tap deposits directly to a tank, the sink chain has that tank in it)
-         FC_ASSERT(!real_sink_chain.sinks.empty(),
-                   "LOGIC ERROR: Tap is connected, but sink chain is empty. Please report this error.");
+      // No error, so it should be a real connection chahin
+      if (connection_chain.is_type<tnt::connection_chain>()) {
+         auto& real_connection_chain = connection_chain.get<tnt::connection_chain>();
+         // Sanity check (even if the tap deposits directly to a tank, the connection chain has that tank in it)
+         FC_ASSERT(!real_connection_chain.connections.empty(),
+                   "LOGIC ERROR: Tap is connected, but connection chain is empty. Please report this error.");
 
-         // Find out if final sink is a tank (could be a tank ID or a same_tank)
+         // Find out if final connection is a tank (could be a tank ID or a same_tank)
          fc::optional<tank_id_type> dest_tank_id;
-         const sink& final_sink = real_sink_chain.sinks.back().get();
-         if (final_sink.is_type<same_tank>())
-            dest_tank_id = real_sink_chain.final_sink_tank;
-         else if (final_sink.is_type<tank_id_type>())
-            dest_tank_id = final_sink.get<tank_id_type>();
+         const connection& final_connection = real_connection_chain.connections.back().get();
+         if (final_connection.is_type<same_tank>())
+            dest_tank_id = real_connection_chain.final_connection_tank;
+         else if (final_connection.is_type<tank_id_type>())
+            dest_tank_id = final_connection.get<tank_id_type>();
 
-         // If final sink *is* a tank...
+         // If final connection *is* a tank...
          if (dest_tank_id.valid()) {
             // ...look it up, check error conditions...
             CHECK_TANK_RESULT();
             auto dest_tank = lookup_tank(dest_tank_id);
             FC_ASSERT(!dest_tank.is_type<nonexistent_object>(),
-                      "Tap connects to sink chain that references a nonexistent object: ${O}",
+                      "Tap connects to connection chain that references a nonexistent object: ${O}",
                       ("O", dest_tank.get<nonexistent_object>().object));
             if (dest_tank.is_type<const_ref<tank_schematic>>()) {
                const auto& dest_schema = dest_tank.get<const_ref<tank_schematic>>().get();
@@ -404,7 +408,7 @@ void tank_validator::check_tap_connection(index_type tap_id) const {
                   // If we know the ID of the tank we're validating, that's the deposit origin. If not, oh well.
                   if (tank_id.valid())
                      path.origin = *tank_id;
-                  path.sink_chain = std::move(real_sink_chain.sinks);
+                  path.connection_chain = std::move(real_connection_chain.connections);
                   auto matching_path = restrictor.get_matching_deposit_path(path, dest_tank_id);
                   FC_ASSERT(matching_path.valid(), "Tap connects to destination tank, but is not accepted by "
                                                    "destination's deposit source restrictor");
@@ -413,10 +417,10 @@ void tank_validator::check_tap_connection(index_type tap_id) const {
          }
          return;
       }
-      // Should never get here (sink_chain result was an unhandled type)
+      // Should never get here (connection_chain result was an unhandled type)
       FC_THROW_EXCEPTION(fc::assert_exception,
-                         "LOGIC ERROR: Unhandled sink chain result type. Please report this error.",
-                         ("chain type", sink_chain.which()));
+                         "LOGIC ERROR: Unhandled connection chain result type. Please report this error.",
+                         ("chain type", connection_chain.which()));
    }
 }
 
@@ -438,7 +442,7 @@ void tank_validator::get_referenced_accounts(flat_set<account_id_type>& accounts
 void tank_validator::validate_tap(index_type tap_id) {
    FC_ASSERT(current_tank.taps.count(tap_id) > 0, "Requested tap does not exist");
    const auto& tap = current_tank.taps.at(tap_id);
-   FC_ASSERT(tap.connected_sink.valid() || tap.connect_authority.valid(),
+   FC_ASSERT(tap.connected_connection.valid() || tap.connect_authority.valid(),
              "Tap must be connected, or specify a connect authority");
 
    // Check tap requirements
@@ -450,7 +454,7 @@ void tank_validator::validate_tap(index_type tap_id) {
       validate_tap_requirement(tap_id, i);
    } FC_CAPTURE_AND_RETHROW((tap_id)(i))
 
-   // If connected, check sink validity
+   // If connected, check connection validity
    try {
       check_tap_connection(tap_id);
    } FC_CAPTURE_AND_RETHROW((tap_id))
@@ -489,7 +493,7 @@ void tank_validator::validate_tap_requirement(const tap_requirement &req) {
 }
 
 void tank_validator::validate_tap(const tap& tap) {
-   FC_ASSERT(tap.connected_sink.valid() || tap.connect_authority.valid(),
+   FC_ASSERT(tap.connected_connection.valid() || tap.connect_authority.valid(),
              "Tap must be connected, or specify a connect authority");
    uniqueness_checker<tap_requirement> is_unique;
    for (const auto& req : tap.requirements) {
@@ -544,7 +548,7 @@ share_type tank_validator::calculate_deposit(const parameters_type& parameters) 
 }
 
 share_type tank_validator::calculate_deposit(const tank_schematic& schematic, const parameters_type& parameters) {
-   tank_validator val(schematic, parameters.max_sink_chain_length);
+   tank_validator val(schematic, parameters.max_connection_chain_length);
    val.validate_tank();
    return val.calculate_deposit(parameters);
 }

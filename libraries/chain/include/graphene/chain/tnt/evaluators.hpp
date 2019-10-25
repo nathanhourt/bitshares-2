@@ -89,7 +89,7 @@ public:
 private:
    const tank_object* tank = nullptr;
    std::unique_ptr<cow_db_wrapper> db_wrapper = nullptr;
-   std::list<sink_fund_account_operation> accounts_to_pay;
+   std::list<connection_fund_account_operation> accounts_to_pay;
    bool delete_tank = false;
 };
 
@@ -104,15 +104,15 @@ private:
    const tank_object* tank = nullptr;
 };
 
-class account_fund_sink_evaluator : public evaluator<account_fund_sink_evaluator> {
+class account_fund_connection_evaluator : public evaluator<account_fund_connection_evaluator> {
 public:
-   using operation_type = account_fund_sink_operation;
+   using operation_type = account_fund_connection_operation;
 
    void_result do_evaluate(const operation_type& o);
    void_result do_apply(const operation_type&);
 
 private:
    std::unique_ptr<cow_db_wrapper> db_wrapper = nullptr;
-   std::list<sink_fund_account_operation> accounts_to_pay;
+   std::list<connection_fund_account_operation> accounts_to_pay;
 };
 } } // namespace graphene::chain

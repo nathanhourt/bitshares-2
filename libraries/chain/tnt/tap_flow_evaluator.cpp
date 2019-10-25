@@ -23,7 +23,7 @@
  */
 #include <graphene/chain/tnt/tap_flow_evaluator.hpp>
 #include <graphene/chain/tnt/tap_requirement_utility.hpp>
-#include <graphene/chain/tnt/sink_flow_processor.hpp>
+#include <graphene/chain/tnt/connection_flow_processor.hpp>
 #include <graphene/chain/is_authorized_asset.hpp>
 
 #include <queue>
@@ -50,7 +50,7 @@ vector<tap_flow> evaluate_tap_flow(cow_db_wrapper& db, const query_evaluator& qu
                 "Tap flow has exceeded its maximum number of taps to open");
       pending_taps.emplace(std::move(id), std::move(amount));
    };
-   sink_flow_processor sink_processor(db, std::move(enqueueTap), std::move(fund_account_cb));
+   connection_flow_processor connection_processor(db, std::move(enqueueTap), std::move(fund_account_cb));
 
    pending_taps.push(std::make_pair(tap_to_open, flow_amount));
 
@@ -63,7 +63,7 @@ vector<tap_flow> evaluate_tap_flow(cow_db_wrapper& db, const query_evaluator& qu
       auto tank = db.get(*current_tap.tank_id);
       FC_ASSERT(tank.schematic().taps().count(current_tap.tap_id) != 0, "Tap to open does not exist!");
       const ptnt::tap& tap = tank.schematic().taps().at(current_tap.tap_id);
-      FC_ASSERT(tap.connected_sink.valid(), "Cannot open tap ${ID}: tap is not connected to a sink",
+      FC_ASSERT(tap.connected_connection.valid(), "Cannot open tap ${ID}: tap is not connected to a connection",
                 ("ID", current_tap));
       // Check the responsible account is authorized to transact the tank's asset
       const asset_object& tank_asset = tank.schematic().asset_type()(db);
@@ -103,9 +103,10 @@ vector<tap_flow> evaluate_tap_flow(cow_db_wrapper& db, const query_evaluator& qu
       // By now, release_limit is the exact amount we will be releasing. Remove it from the tank balance
       tank.balance = tank.balance() - release_limit;
       // Flow the released asset until it stops
-      auto sink_path = sink_processor.release_to_sink(*current_tap.tank_id, *tap.connected_sink, release_limit);
+      auto connection_path = connection_processor.release_to_connection(*current_tap.tank_id,
+                                                                        *tap.connected_connection, release_limit);
       // Add flow to report
-      tap_flows.emplace_back(release_limit, tap_to_open, std::move(sink_path));
+      tap_flows.emplace_back(release_limit, tap_to_open, std::move(connection_path));
       // Remove the tap from the queue to open
       pending_taps.pop();
    }

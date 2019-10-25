@@ -43,44 +43,46 @@ struct need_lookup_function{};
 template<typename Expected>
 using lookup_result = static_variant<const_ref<Expected>, need_lookup_function, nonexistent_object>;
 
-/// A result type indicating that a sink can receive all asset types (i.e., sink is an account_id_type)
+/// A result type indicating that a connection can receive all asset types (i.e., connection is an account_id_type)
 struct any_asset{};
 /// A result type indicating that a referenced tank attachment cannot receive any asset
 struct no_asset {
    /// The attachment that receives no asset
    attachment_id_type attachment_id;
 };
-/// A result type for what asset a sink receives
-using sink_asset = static_variant<asset_id_type, any_asset, no_asset, need_lookup_function, nonexistent_object>;
+/// A result type for what asset a connection receives
+using connection_asset = static_variant<asset_id_type, any_asset, no_asset, need_lookup_function, nonexistent_object>;
 /// A result type for what asset a tank attachment receives
 using attachment_asset = static_variant<asset_id_type, no_asset, need_lookup_function, nonexistent_object>;
 
-/// A chain of sinks where each sink deposits to the one following it until the final sink releases to a destination
-struct sink_chain {
-   /// Sinks in the chain
-   vector<const_ref<sink>> sinks;
-   /// "Current tank" for the final sink in the chain. This is null if and only if the chain never connects to a
-   /// remote tank.
-   optional<tank_id_type> final_sink_tank;
+/// A chain of connections where each connection deposits to the one following it until the final connection releases
+/// to a destination
+struct connection_chain {
+   /// Connections in the chain
+   vector<const_ref<connection>> connections;
+   /// "Current tank" for the final connection in the chain. This is null if and only if the chain never connects to
+   /// a remote tank.
+   optional<tank_id_type> final_connection_tank;
 
-   sink_chain() = default;
-   sink_chain(const_ref<sink> first_sink) : sinks{{first_sink}} {}
+   connection_chain() = default;
+   connection_chain(const_ref<connection> first_connection) : connections{{first_connection}} {}
 };
-/// A result type indicating that a sink is incapable of receiving the provided asset
-struct bad_sink {
+/// A result type indicating that a connection is incapable of receiving the provided asset
+struct bad_connection {
    enum reason_enum { receives_wrong_asset, receives_no_asset };
    reason_enum reason;
-   const sink& s;
+   const connection& s;
 };
-/// A result type for the sink a tank attachment deposits to
-using attachment_sink_result = static_variant<const_ref<sink>, bad_sink, need_lookup_function, nonexistent_object>;
-/// A result type indicating that a sink chain is longer than the maximum length
+/// A result type for the connection a tank attachment deposits to
+using attachment_connection_result = static_variant<const_ref<connection>, bad_connection, need_lookup_function,
+                                                    nonexistent_object>;
+/// A result type indicating that a connection chain is longer than the maximum length
 struct exceeded_max_chain_length {};
-/// A result type for the destination a sink chain deposits to
-using sink_chain_result = static_variant<sink_chain, exceeded_max_chain_length, bad_sink,
+/// A result type for the destination a connection chain deposits to
+using connection_chain_result = static_variant<connection_chain, exceeded_max_chain_length, bad_connection,
                                          need_lookup_function, nonexistent_object>;
 
-/// A class providing information retrieval utilities for tanks, tank accessories, and sinks
+/// A class providing information retrieval utilities for tanks, tank accessories, and connections
 class lookup_utilities {
 protected:
    const tank_schematic& current_tank;
@@ -99,25 +101,26 @@ public:
 
    /// @brief Lookup what asset type a tank_attachment can receive
    attachment_asset get_attachment_asset(const attachment_id_type& id) const;
-   /// @brief Lookup what sink a tank_attachment releases received asset to
-   attachment_sink_result get_attachment_sink(const attachment_id_type& id) const;
-   /// @brief Lookup what asset type(s) a sink can receive
-   sink_asset get_sink_asset(const sink& s) const;
+   /// @brief Lookup what connection a tank_attachment releases received asset to
+   attachment_connection_result get_attachment_connection(const attachment_id_type& id) const;
+   /// @brief Lookup what asset type(s) a connection can receive
+   connection_asset get_connection_asset(const connection& s) const;
 
-   /// @brief Get the chain of sinks starting at the provided sink
-   /// @param s The sink to begin traversal at
-   /// @param max_chain_length The maximum number of sinks to follow
-   /// @param asset_type [Optional] If provided, checks that all sinks in chain accept supplied asset type
+   /// @brief Get the chain of connections starting at the provided connection
+   /// @param s The connection to begin traversal at
+   /// @param max_chain_length The maximum number of connections to follow
+   /// @param asset_type [Optional] If provided, checks that all connections in chain accept supplied asset type
    ///
-   /// Sinks receive asset when it is released and specify where it should go next. The location specified by a sink
-   /// is not necessarily a depository that stores asset over time; rather, sinks can point to tank attachments,
-   /// which cannot store asset and must immediately release it to another sink. Thus tank attachments (and perhaps
-   /// other sink targets in the future) can form chains of sinks which must eventually terminate in a depository.
+   /// Connections receive asset when it is released and specify where it should go next. The location specified by a
+   /// connection is not necessarily a depository that stores asset over time; rather, connections can point to tank
+   /// attachments, which cannot store asset and must immediately release it to another connection. Thus tank
+   /// attachments (and perhaps other connection targets in the future) can form chains of connections which must
+   /// eventually terminate in a depository.
    ///
-   /// This function follows a chain of sinks to find the asset depository that the provided sink eventually deposits
-   /// to, and returns the full chain. It will detect if the chain references any nonexistent objects, and it can
-   /// optionally check that all sinks in the chain accept the provided asset type.
-   sink_chain_result get_sink_chain(const_ref<sink> s, size_t max_chain_length,
+   /// This function follows a chain of connections to find the asset depository that the provided connection
+   /// eventually deposits to, and returns the full chain. It will detect if the chain references any nonexistent
+   /// objects, and it can optionally check that all connections in the chain accept the provided asset type.
+   connection_chain_result get_connection_chain(const_ref<connection> s, size_t max_chain_length,
                                     optional<asset_id_type> asset_type = {}) const;
 };
 
@@ -127,14 +130,14 @@ FC_REFLECT(graphene::protocol::tnt::nonexistent_object, (object))
 FC_REFLECT(graphene::protocol::tnt::need_lookup_function, )
 FC_REFLECT(graphene::protocol::tnt::any_asset, )
 FC_REFLECT(graphene::protocol::tnt::no_asset, (attachment_id))
-FC_REFLECT_TYPENAME(graphene::protocol::tnt::sink_asset)
+FC_REFLECT_TYPENAME(graphene::protocol::tnt::connection_asset)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::attachment_asset)
-FC_REFLECT_ENUM(graphene::protocol::tnt::bad_sink::reason_enum,
+FC_REFLECT_ENUM(graphene::protocol::tnt::bad_connection::reason_enum,
                 (receives_wrong_asset)(receives_no_asset))
-FC_REFLECT(graphene::protocol::tnt::sink_chain, (sinks)(final_sink_tank))
-FC_REFLECT(graphene::protocol::tnt::bad_sink, (reason))
+FC_REFLECT(graphene::protocol::tnt::connection_chain, (connections)(final_connection_tank))
+FC_REFLECT(graphene::protocol::tnt::bad_connection, (reason))
 FC_REFLECT(graphene::protocol::tnt::exceeded_max_chain_length, )
-FC_REFLECT_TYPENAME(graphene::protocol::tnt::sink_chain_result)
+FC_REFLECT_TYPENAME(graphene::protocol::tnt::connection_chain_result)
 
 namespace fc {
 template<class T>
