@@ -68,7 +68,6 @@ object_id_type tank_create_evaluator::do_apply(const tank_create_operation& o) {
       tank.schematic = std::move(schema);
       tank.deposit = o.deposit_amount;
       tank.creation_date = now;
-      tank.restrictor_ID = tank.schematic.get_deposit_source_restrictor();
    }).id;
 }
 
@@ -102,7 +101,6 @@ void_result tank_update_evaluator::do_apply(const tank_update_evaluator::operati
    d.modify(*old_tank, [&schema = updated_tank, &o](tank_object& tank) {
       tank.schematic = std::move(schema);
       tank.deposit += o.deposit_delta;
-      tank.restrictor_ID = tank.schematic.get_deposit_source_restrictor();
 
       for (auto id : o.attachments_to_remove)
          tank.clear_attachment_state(id);

@@ -64,8 +64,6 @@ public:
 
    /// Storage of tank accessories' states
    accessory_state_map accessory_states;
-   /// Cache of the ID of the tank's deposit_source_restrictor, if it has one
-   optional<ptnt::index_type> restrictor_ID;
 
    /// Get state by address (const, generic types)
    const ptnt::tank_accessory_state* get_state(const stateful_accessory_address& address) const {
@@ -116,6 +114,9 @@ public:
    void clear_tap_state(ptnt::index_type tap_ID);
    /// Delete state for the supplied attachment ID
    void clear_attachment_state(ptnt::index_type attachment_ID);
+
+   /// Get the specifically typed ID
+   tank_id_type get_id() const { return id; }
 };
 
 using tank_object_index_type = multi_index_container<
@@ -135,4 +136,4 @@ GRAPHENE_DECLARE_EXTERNAL_SERIALIZATION(graphene::chain::tank_object)
 // This reflection information cannot be moved to the .cpp file as with the other objects, because it must be visible
 // to the evaluation code.
 FC_REFLECT(graphene::chain::tank_object,
-           (schematic)(balance)(deposit)(creation_date)(accessory_states)(restrictor_ID))
+           (schematic)(balance)(deposit)(creation_date)(accessory_states))

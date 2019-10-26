@@ -30,7 +30,6 @@ namespace graphene { namespace protocol { namespace tnt {
 
 // Tank attachment types:
 struct asset_flow_meter;
-struct deposit_source_restrictor;
 struct tap_opener;
 struct attachment_connect_authority;
 
@@ -50,20 +49,19 @@ struct exchange_requirement;
 /// Tank accessories are objects which add functionality to a tank, including tap requirements and tank attachments
 using tank_accessory_list = fc::typelist::list<
    /*00*/asset_flow_meter,
-   /*01*/deposit_source_restrictor,
-   /*02*/tap_opener,
-   /*03*/attachment_connect_authority,
-   /*04*/immediate_flow_limit,
-   /*05*/cumulative_flow_limit,
-   /*06*/periodic_flow_limit,
-   /*07*/time_lock,
-   /*08*/minimum_tank_level,
-   /*09*/review_requirement,
-   /*10*/documentation_requirement,
-   /*11*/delay_requirement,
-   /*12*/hash_preimage_requirement,
-   /*13*/ticket_requirement,
-   /*14*/exchange_requirement
+   /*01*/tap_opener,
+   /*02*/attachment_connect_authority,
+   /*03*/immediate_flow_limit,
+   /*04*/cumulative_flow_limit,
+   /*05*/periodic_flow_limit,
+   /*06*/time_lock,
+   /*07*/minimum_tank_level,
+   /*08*/review_requirement,
+   /*09*/documentation_requirement,
+   /*10*/delay_requirement,
+   /*11*/hash_preimage_requirement,
+   /*12*/ticket_requirement,
+   /*13*/exchange_requirement
 >;
 
 /// Enumeration of the different tank accessory types

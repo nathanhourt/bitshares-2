@@ -49,7 +49,6 @@ struct set_attachment_connection_inspector {
       FC_THROW_EXCEPTION(fc::assert_exception,
                          "Cannot set connection on unsupported attachment type. Please report this error.");
    }
-   [[noreturn]] void operator()(ptnt::deposit_source_restrictor&) const { reject(); }
    [[noreturn]] void operator()(ptnt::attachment_connect_authority&) const { reject(); }
 
    // Generic attachment unwrapper:
@@ -106,8 +105,8 @@ struct reconnect_attachment_evaluator {
 
       // Get the asset type the target attachment releases
       auto attachment_asset = TL::runtime::dispatch(ptnt::tank_attachment::list(), attachment.which(),
-                                                              [&attachment](auto t) {
-         return attachment.get<typename decltype(t)::type>().receives_asset();
+                                                    [&attachment](auto t) {
+         return ptnt::attachment_get_asset_received(attachment.get<typename decltype(t)::type>());
       });
       FC_ASSERT(attachment_asset.valid(),
                 "LOGIC ERROR: attachment_connect_authority target cannot receive asset. Please report this error.");

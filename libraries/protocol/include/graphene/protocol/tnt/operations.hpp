@@ -51,6 +51,8 @@ struct tank_create_operation : public base_operation {
    vector<tnt::tap> taps;
    /// Attachments that will be attached to the tank
    vector<tnt::tank_attachment> attachments;
+   /// Sources that are authorized to deposit to the tank
+   tnt::authorized_connections_type authorized_sources;
 
    extensions_type extensions;
 
@@ -101,6 +103,9 @@ struct tank_update_operation : public base_operation {
    flat_map<tnt::index_type, tnt::tank_attachment> attachments_to_replace;
    /// List of new attachments to add; these will be assigned new IDs consecutively
    vector<tnt::tank_attachment> attachments_to_add;
+
+   /// Set this field to replace the tank's deposit source authorizations
+   fc::optional<tnt::authorized_connections_type> new_authorized_sources;
 
    extensions_type extensions;
 
@@ -285,12 +290,11 @@ struct connection_fund_account_operation : public base_operation {
 
 FC_REFLECT(graphene::protocol::tank_create_operation::fee_parameters_type, (base_fee)(price_per_byte)(extensions))
 FC_REFLECT(graphene::protocol::tank_create_operation,
-           (fee)(payer)(deposit_amount)(contained_asset)(taps)(attachments)(extensions))
+           (fee)(payer)(deposit_amount)(contained_asset)(taps)(attachments)(authorized_sources)(extensions))
 FC_REFLECT(graphene::protocol::tank_update_operation::fee_parameters_type, (base_fee)(price_per_byte)(extensions))
 FC_REFLECT(graphene::protocol::tank_update_operation,
-           (fee)(payer)(update_authority)(tank_to_update)(deposit_delta)
-           (taps_to_remove)(taps_to_replace)(taps_to_add)
-           (attachments_to_remove)(attachments_to_replace)(attachments_to_add)(extensions))
+           (fee)(payer)(update_authority)(tank_to_update)(deposit_delta)(taps_to_remove)(taps_to_replace)(taps_to_add)
+           (attachments_to_remove)(attachments_to_replace)(attachments_to_add)(new_authorized_sources)(extensions))
 FC_REFLECT(graphene::protocol::tank_delete_operation::fee_parameters_type, (base_fee)(extensions))
 FC_REFLECT(graphene::protocol::tank_delete_operation,
            (fee)(payer)(delete_authority)(tank_to_delete)(deposit_claimed)(extensions))

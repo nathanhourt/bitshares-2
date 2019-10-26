@@ -107,9 +107,11 @@ struct tap_id_type {
 };
 
 /// An implicit tank ID which refers to the same tank as the item containing the reference
-struct same_tank{};
+struct same_tank{ friend bool operator<(const same_tank&, const same_tank&) { return false; } };
 /// A pipeline over which asset can flow. A connection specifies a location that asset can send or receive from.
 using connection = static_variant<same_tank, account_id_type, tank_id_type, attachment_id_type>;
+/// A connection to/from somewhere not on the current tank
+using remote_connection = static_variant<account_id_type, tank_id_type, attachment_id_type>;
 
 /// @brief Check if connection is a terminal connection or not
 ///
@@ -118,23 +120,21 @@ using connection = static_variant<same_tank, account_id_type, tank_id_type, atta
 /// connection. At present, only a tank attachment connection is a non-terminal connection
 inline bool is_terminal_connection(const connection& s) { return !s.is_type<attachment_id_type>(); }
 
-/// Comparator to check equality of two connections
-///
-/// Aside from the fact that static_variant comparison is rather annoying in general, connection comparison is also
-/// tricky due to the @ref same_tank type, which is contextually defined. Thus to create this comparator, it is
-/// necessary to specify the left and right side's "current_tank" values so they can be compared if either or both
-/// sides are same_tank. Note that these values are taken by reference, so updates to the referenced values will be
-/// reflected in the comparator's results. Note also that these values are optional, but must be defined to yield a
-/// matching result; in particular, if both are null, they are still regarded as unequal.
-struct connection_eq {
-   const fc::optional<tank_id_type>& left_current;
-   const fc::optional<tank_id_type>& right_current;
+inline bool operator<(const remote_connection& left, const remote_connection& right) {
+   if (left.which() != right.which())
+      return left.which() < right.which();
+   return TL::runtime::dispatch(remote_connection::list(), left.which(), [&left, &right](auto t) {
+      using Connection = typename decltype(t)::type;
+      return left.get<Connection>() < right.get<Connection>();
+   });
+}
 
-   connection_eq(const fc::optional<tank_id_type>& left_current, const fc::optional<tank_id_type>& right_current)
-       : left_current(left_current), right_current(right_current) {}
-
-   bool operator()(const connection& left, const connection& right) const;
-};
+/// Empty type to indicate that a structure will receive asset from all sources
+struct all_sources{};
+/// A restriction on what sources a structure (presently, either a tank or a tank attachment) will receive asset
+/// from. Deposits coming immediately from a remote source (not the same tank) not specified in the set will be
+/// rejected with an error. If @ref all_sources is specified, deposits will not be restricted based on source.
+using authorized_connections_type = static_variant<flat_set<remote_connection>, all_sources>;
 
 struct unlimited_flow{};
 /// A limit to the amount of asset that flows during a release of asset; either unlimited, or a maximum amount
@@ -167,6 +167,7 @@ inline bool operator<=(const asset_flow_limit& a, const asset_flow_limit& b) {
 struct asset_flow_meter {
    constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
    constexpr static bool unique = false;
+   constexpr static bool can_receive_asset = true;
    struct state_type {
       /// The amount of asset that has flowed through the meter
       share_type metered_amount;
@@ -175,54 +176,17 @@ struct asset_flow_meter {
    asset_id_type asset_type;
    /// The connection which the metered asset is released to
    connection destination;
+   /// What remote sources, if any, can deposit to this meter
+   authorized_connections_type remote_sources;
    /// The authority which may reset the meter; if null, only the emergency tap authority is accepted
    optional<authority> reset_authority;
 
-   optional<asset_id_type> receives_asset() const { return asset_type; }
-   optional<connection> output_connection() const { return destination; }
+   asset_id_type receives_asset() const { return asset_type; }
+   const authorized_connections_type& authorized_sources() const { return remote_sources; }
+   const connection& output_connection() const { return destination; }
 
    asset_flow_meter(asset_id_type asset_type = {}, connection destination = {}, optional<authority> reset_auth = {})
       : asset_type(asset_type), destination(std::move(destination)), reset_authority(std::move(reset_auth)) {}
-};
-
-/// Contains several patterns for sources that may deposit to the tank, and rejects any deposit that comes via a path
-/// that does not match against any pattern
-struct deposit_source_restrictor {
-   constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
-   constexpr static bool unique = true;
-   /// This type defines a wildcard connection type, which matches against any connection(s)
-   struct wildcard_connection {
-      /// If true, wildcard matches any number of connections; otherwise, matches exactly one
-      bool repeatable;
-   };
-   /// A deposit path element may be a specific connection, or a wildcard to match any connection
-   using deposit_path_element = static_variant<connection, wildcard_connection>;
-   /// A deposit path is a sequence of connections; a deposit path pattern is a series of connections that incoming
-   /// deposits must have flowed through, which may include wildcards that will match against any connection(s)
-   using deposit_path_pattern = vector<deposit_path_element>;
-
-   /// A list of path patterns that a deposit is checked against; if a deposit's path doesn't match any pattern, it
-   /// is rejected
-   vector<deposit_path_pattern> legal_deposit_paths;
-
-   optional<asset_id_type> receives_asset() const { return {}; }
-   optional<connection> output_connection() const { return {}; }
-
-   /// A deposit path, which is matched against the @ref legal_deposit_paths
-   struct deposit_path {
-      /// The origin of the deposit, if known. If omitted, the origin will match any tank ID, but no account ID
-      fc::optional<connection> origin;
-      /// The full connection chain that the origin deposited into; this is checked even if the origin is omitted
-      vector<std::reference_wrapper<const connection>> connection_chain;
-   };
-   /// @brief Check if the provided path matches any legal deposit path, and if so, return its index
-   /// @param path The path the deposit took
-   /// @param my_tank ID of the tank the deposit_source_restrictor is on
-   fc::optional<size_t> get_matching_deposit_path(const deposit_path& path,
-                                                  const fc::optional<tank_id_type> &my_tank = {}) const;
-
-   deposit_source_restrictor(vector<deposit_path_pattern> legal_paths = {})
-      : legal_deposit_paths(std::move(legal_paths)) {}
 };
 
 /// Receives asset and immediately releases it to a predetermined connection, scheduling a tap on the tank it is
@@ -230,17 +194,21 @@ struct deposit_source_restrictor {
 struct tap_opener {
    constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
    constexpr static bool unique = false;
+   constexpr static bool can_receive_asset = true;
    /// Index of the tap to open (must be on the same tank as the opener)
    index_type tap_index;
    /// The amount to release
    asset_flow_limit release_amount;
    /// The connection that asset is released to after flowing through the opener
    connection destination;
+   /// What remote sources, if any, can deposit to this opener
+   authorized_connections_type remote_sources;
    /// The type of asset which can flow through the opener
    asset_id_type asset_type;
 
-   optional<asset_id_type> receives_asset() const { return asset_type; }
-   optional<connection> output_connection() const { return destination; }
+   asset_id_type receives_asset() const { return asset_type; }
+   const authorized_connections_type& authorized_sources() const { return remote_sources; }
+   const connection& output_connection() const { return destination; }
 
    tap_opener(index_type tap_index = 0, asset_flow_limit release_amount = {},
               connection dest = {}, asset_id_type asset = {})
@@ -251,13 +219,11 @@ struct tap_opener {
 struct attachment_connect_authority {
    constexpr static tank_accessory_type_enum accessory_type = tank_attachment_accessory_type;
    constexpr static bool unique = false;
+   constexpr static bool can_receive_asset = false;
    /// The authority that can reconnect the attachment
    authority connect_authority;
    /// The attachment that can be reconnected (must be on the current tank)
    index_type attachment_id;
-
-   optional<asset_id_type> receives_asset() const { return {}; }
-   optional<connection> output_connection() const { return {}; }
 
    attachment_connect_authority(authority connect_authority = {}, index_type attachment_id = 0)
       : connect_authority(std::move(connect_authority)), attachment_id(attachment_id) {}
@@ -515,6 +481,8 @@ struct tank_schematic {
    flat_map<index_type, tank_attachment> attachments;
    /// Counter of attachments added; used to assign attachment IDs
    index_type attachment_counter = 0;
+   /// What remote sources, if any, can deposit to this tank
+   authorized_connections_type remote_sources;
    /// Type of asset this tank can store
    asset_id_type asset_type;
 
@@ -522,9 +490,6 @@ struct tank_schematic {
    static tank_schematic from_create_operation(const tank_create_operation& create_op);
    /// Update from a tank_update_operation
    void update_from_operation(const tank_update_operation& update_op);
-
-   /// Returns the ID of the deposit_source_restrictor attachment, if one exists; null otherwise
-   fc::optional<index_type> get_deposit_source_restrictor() const;
 };
 
 /// @}
@@ -536,12 +501,11 @@ GRAPHENE_DECLARE_EXTERNAL_SERIALIZATION(graphene::protocol::tnt::tank_schematic)
 FC_REFLECT(graphene::protocol::tnt::attachment_id_type, (tank_id)(attachment_id))
 FC_REFLECT(graphene::protocol::tnt::tap_id_type, (tank_id)(tap_id))
 FC_REFLECT(graphene::protocol::tnt::unlimited_flow,)
+FC_REFLECT(graphene::protocol::tnt::all_sources,)
 FC_REFLECT(graphene::protocol::tnt::same_tank,)
 
 FC_REFLECT(graphene::protocol::tnt::asset_flow_meter::state_type, (metered_amount))
 FC_REFLECT(graphene::protocol::tnt::asset_flow_meter, (asset_type)(destination)(reset_authority))
-FC_REFLECT(graphene::protocol::tnt::deposit_source_restrictor::wildcard_connection, (repeatable))
-FC_REFLECT(graphene::protocol::tnt::deposit_source_restrictor, (legal_deposit_paths))
 FC_REFLECT(graphene::protocol::tnt::tap_opener, (tap_index)(release_amount)(destination)(asset_type))
 FC_REFLECT(graphene::protocol::tnt::attachment_connect_authority, (connect_authority)(attachment_id))
 
@@ -572,13 +536,12 @@ FC_REFLECT(graphene::protocol::tnt::exchange_requirement, (meter_id)(release_per
 FC_REFLECT(graphene::protocol::tnt::tap,
            (connected_connection)(open_authority)(connect_authority)(requirements)(destructor_tap))
 FC_REFLECT(graphene::protocol::tnt::tank_schematic,
-           (taps)(tap_counter)(attachments)(attachment_counter)(asset_type))
+           (taps)(tap_counter)(attachments)(attachment_counter)(remote_sources)(asset_type))
 
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::hash_preimage_requirement::hash_type)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::connection)
+FC_REFLECT_TYPENAME(graphene::protocol::tnt::authorized_connections_type)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::asset_flow_limit)
-FC_REFLECT_TYPENAME(graphene::protocol::tnt::deposit_source_restrictor::deposit_path_element)
-FC_REFLECT_TYPENAME(graphene::protocol::tnt::deposit_source_restrictor::deposit_path_pattern)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::tank_attachment)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::tap_requirement)
 FC_REFLECT_TYPENAME(graphene::protocol::tnt::tank_accessory_state)

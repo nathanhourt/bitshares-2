@@ -69,24 +69,29 @@ attachment_asset lookup_utilities::get_attachment_asset(const attachment_id_type
 
    return fc::typelist::runtime::dispatch(tank_attachment::list(), attachment.which(),
                                           [&id, &attachment](auto t) -> attachment_asset {
-      const auto& asset_type = attachment.get<typename decltype(t)::type>().receives_asset();
-      if (asset_type.valid())
-         return *asset_type;
+      auto result = attachment_get_asset_received(attachment.get<typename decltype(t)::type>());
+      if (result.valid())
+         return *result;
       return no_asset{id};
    });
 }
 
+template<typename Attachment, std::enable_if_t<Attachment::can_receive_asset, bool> = true>
+optional<const_ref<connection>> get_attachment_connection_impl(const Attachment& a) { return a.output_connection(); }
+template<typename Attachment, std::enable_if_t<!Attachment::can_receive_asset, bool> = true>
+optional<const_ref<connection>> get_attachment_connection_impl(const Attachment&) { return {}; }
+
 attachment_connection_result lookup_utilities::get_attachment_connection(const attachment_id_type &id) const {
-   CHECK_ATTACHMENT_SINK_RESULT();
+   CHECK_ATTACHMENT_CONNECTION_RESULT();
    auto attachment_result = lookup_attachment(id);
    if (is_error(attachment_result)) return attachment_connection_result::import_from(attachment_result);
    const tank_attachment& attachment = attachment_result.get<const_ref<tank_attachment>>();
 
    return fc::typelist::runtime::dispatch(tank_attachment::list(), attachment.which(),
                                           [&id, &attachment](auto t) -> attachment_connection_result {
-      const auto& connection_type = attachment.get<typename decltype(t)::type>().output_connection();
-      if (connection_type.valid())
-         return std::cref(*connection_type);
+      auto result = get_attachment_connection_impl(attachment.get<typename decltype(t)::type>());
+      if (result.valid())
+         return *result;
       return bad_connection{bad_connection::receives_no_asset, id};
    });
 }
@@ -113,7 +118,7 @@ connection_chain_result lookup_utilities::get_connection_chain(const_ref<connect
                                                    optional<asset_id_type> asset_type) const {
    auto check_asset = [&asset_type, this](const connection& s) -> optional<connection_chain_result> {
       if (!asset_type.valid()) return {};
-      CHECK_SINK_ASSET_RESULT();
+      CHECK_CONNECTION_ASSET_RESULT();
       auto connection_asset = get_connection_asset(s);
       if (connection_asset.is_type<any_asset>() || connection_asset.is_type<need_lookup_function>()) return {};
       if (connection_asset.is_type<asset_id_type>()) {
@@ -140,7 +145,7 @@ connection_chain_result lookup_utilities::get_connection_chain(const_ref<connect
       else
          attachment_id.tank_id = chain.final_connection_tank;
 
-      CHECK_SINK_CHAIN_RESULT();
+      CHECK_CONNECTION_CHAIN_RESULT();
       auto connection_result = get_attachment_connection(attachment_id);
       if (is_error(connection_result))
          return connection_chain_result::import_from(connection_result);

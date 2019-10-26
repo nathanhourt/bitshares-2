@@ -84,8 +84,9 @@ BOOST_FIXTURE_TEST_CASE(cow_db_wrapper_test, database_fixture) { try {
 
 #define CORE(x) (x * GRAPHENE_BLOCKCHAIN_PRECISION)
 BOOST_FIXTURE_TEST_CASE(basic_tank_test, database_fixture) { try {
-   ACTORS((nathan)(joe)(sam))
+   ACTORS((nathan)(joe)(sam)(eve))
    fund(nathan, asset(CORE(5000)));
+   fund(eve, asset(CORE(1000)));
    share_type nathan_bal = CORE(5000);
 
    set_tnt_committee_parameters();
@@ -131,6 +132,7 @@ BOOST_FIXTURE_TEST_CASE(basic_tank_test, database_fixture) { try {
    create.payer = nathan_id;
    create.attachments = {opener};
    create.taps = {emergency_tap, tap_1, tap_2, tap_3, tap_4};
+   create.authorized_sources = flat_set<ptnt::remote_connection>{nathan_id};
    create.set_fee_and_deposit(db);
    trx.clear();
    trx.set_expiration(db.head_block_time() + 1000);
@@ -176,6 +178,14 @@ BOOST_FIXTURE_TEST_CASE(basic_tank_test, database_fixture) { try {
       BOOST_CHECK_EQUAL(db.get_balance(nathan_id, {}).amount.value, nathan_bal.value);
       BOOST_CHECK_EQUAL(tank.balance.value, CORE(1000));
    }
+
+   // Eve attempts to add 50 CORE to the tank (fails because eve is not authorized to deposit to tank)
+   fill.funding_account = eve_id;
+   fill.funding_amount = asset(CORE(50));
+   trx.clear();
+   trx.operations = {fill};
+   sign(trx, eve_private_key);
+   EXPECT_EXCEPTION_STRING("tank does not allow deposits from source", [&] {db.push_transaction(trx); });
 
    // Release 10 CORE through tap 1
    tap_open_operation open;

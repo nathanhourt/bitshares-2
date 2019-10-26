@@ -30,7 +30,7 @@ namespace graphene { namespace protocol { namespace tnt {
 /// Chain-defined parameters and limits for TNT structures
 struct parameters_type {
    /// The maximum length of a connection chain (such as a sequence of tank attachments)
-   uint16_t max_connection_chain_length = GRAPHENE_DEFAULT_MAX_SINK_CHAIN_LENGTH;
+   uint16_t max_connection_chain_length = GRAPHENE_DEFAULT_MAX_CONNECTION_CHAIN_LENGTH;
    /// The maximum number of taps a single transaction may open
    uint16_t max_taps_to_open = GRAPHENE_DEFAULT_MAX_TAPS_TO_OPEN;
    /// The base deposit required for all tanks

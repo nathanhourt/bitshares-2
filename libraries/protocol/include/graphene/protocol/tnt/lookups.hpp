@@ -82,6 +82,11 @@ struct exceeded_max_chain_length {};
 using connection_chain_result = static_variant<connection_chain, exceeded_max_chain_length, bad_connection,
                                          need_lookup_function, nonexistent_object>;
 
+template<typename Attachment, std::enable_if_t<Attachment::can_receive_asset, bool> = true>
+fc::optional<asset_id_type> attachment_get_asset_received(const Attachment& a) { return a.receives_asset(); }
+template<typename Attachment, std::enable_if_t<!Attachment::can_receive_asset, bool> = true>
+fc::optional<asset_id_type> attachment_get_asset_received(const Attachment& a) { return {}; }
+
 /// A class providing information retrieval utilities for tanks, tank accessories, and connections
 class lookup_utilities {
 protected:
